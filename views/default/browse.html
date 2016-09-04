@@ -30,12 +30,14 @@
 //     initialise the data table
 //     setting responsive to true allows it to adapt to viewport size
     $(document).ready( function () {
+        $.fn.dataTable.moment( 'DD-MM-YY HH:mm' );
+
         $('#data_table').DataTable( {
             responsive: true,
             scrollX: true,
             scrollY: 500,
             "lengthMenu": [ 10, 25, 50, 100 ],
-            "order": [ 3, 'asc' ],
+            "order": [ 2, 'asc' ],
 //             TODO fix ordering disabler if not displaying holpital column
 //             "columnDefs": [
 //                             { "orderable": false, "targets": [4,5] }
