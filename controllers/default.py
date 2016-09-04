@@ -385,7 +385,9 @@ def browse():
     return locals()
 
 
-def send_email(session_id):
+
+
+def send_signup_email(session_id):
     # session_id = 37
     user_record = db(db.auth_user.id==auth.user_id).select().first()
     session_record = db(db.sessions.id==session_id).select().first()
@@ -395,17 +397,23 @@ def send_email(session_id):
     trainee_name = user_record.first_name + " " + user_record.last_name
     trainee_email = user_record.email
     email_subject = "Medboard - Signup Notification"
-    email_html ="<html><h1>Medboard.co.uk</h1> <p>Dear " + session_lead_name +",</p><p>This is an notification email from Medboard.</p><hr> \
-                    <p>A student has signed up to attend one of your sessions. Details below:</p>  \
-                    <p>Session Title: " + str(session_record.title) + \
-                    "</p> <p>Session Date and Time: " + str(session_record.start_datetime.strftime('%d-%m-%Y %H:%M')) + \
-                    "</p> <p>Session Location: " + str(session_record.session_location) + \
-                    "</p> <p>Student Name: " + str(trainee_name) + \
-                    "</p> <p>Student Email: " + str(trainee_email) + \
-                    "</p> <p><a href='https://nhshd15.pythonanywhere.com/medboard/default/view_session?s_id="+\
-                    str(session_id)+"'>Click here</a> to view this session's details online</p>" \
-                    "<p>NOTE: If for any reason this clinic is cancelled or you need to contact the student then you can reply to this message to contact the student directly.</p> \
-                    <p>Thanks,</p> <p>Medboard </p></html>"
+    email_html = HTML(BODY(H1('Medboard.co.uk'),P('Dear '+ session_lead_name), \
+        P(' This is a notification email from Medboard.'),
+        P(' You are receiving this e-mail as you are on the Medboard system as the contact for the below session. If you think you have received this e-mail in error, please contact Steffanie immediately via e-mail (Steffanie.newton@wales.nhs.uk) or on PCH ext 4413 RGH 3404'),
+        HR(),
+        P('A student has signed up to attend a session. Details below:'),
+        P('Session Title: ' + str(session_record.title)),
+        P('Session Date & Time: ' + str(session_record.start_datetime.strftime('%d-%m-%Y %H:%M'))),
+        P('Student Name: ' + str(trainee_name)),
+        P('Student Email: ' + str(trainee_email)),
+        P(A('Click here', _href="https://nhshd15.pythonanywhere.com/medboard/default/view_session?s_id="+str(session_id)) + " to view this session's details online."),
+        P('NOTE: If for any reason this clinic is cancelled, amended or you need to contact the student, then you can reply to this message to contact the student directly. ', EM('Please be aware that as point of contact, it is your responsibility to let everyone who is  involved in this session know that the above student will be attending.')),
+        P('If this student fails to attend this session and you wish to inform us, please e-mail Steffanie and forward these details.'),
+        HR(),
+        P('Thanks,'),
+        P('Medboard'),
+
+        ))
 
     sent_email = 999
     send_email = requests.post(
@@ -426,6 +434,135 @@ def send_email(session_id):
 
     if send_email.status_code == 200:
         sent_email = send_email.status_code
+
+    return sent_email
+
+
+def send_student_signup_email(session_id):
+    # session_id = 37
+    user_record = db(db.auth_user.id==auth.user_id).select().first()
+    session_record = db(db.sessions.id==session_id).select().first()
+
+    session_lead_name = session_record.session_lead_name
+    session_lead_email_address = session_record.session_lead_email
+    trainee_name = user_record.first_name + " " + user_record.last_name
+    trainee_email = user_record.email
+    email_subject = "Medboard - Signup Notification"
+    email_html = HTML(BODY(H1('Medboard.co.uk'),P('Dear '+ trainee_name), \
+        P(' This is a notification email from Medboard.'),
+        P(' Thank you for signing up to attend a session. Details below:'),
+        HR(),
+        P('Session Title: ' + str(session_record.title)),
+        P('Session Date & Time: ' + str(session_record.start_datetime.strftime('%d-%m-%Y %H:%M'))),
+        P('Learning outcomes: ' + str(session_record.description)),
+        P(A('Click here', _href="https://nhshd15.pythonanywhere.com/medboard/default/view_session?s_id="+str(session_id)) + " to view this session's details online."),
+        HR(),
+        P('Thanks,'),
+        P('Medboard'),
+
+        ))
+
+    sent_email = 999
+    send_email = requests.post(
+        "https://api.sendgrid.com/api/mail.send.json",
+#             auth=("api", "key-bb2f721881bfc7b739162a54a291f281"),
+            data={
+            "api_user":"bsharif",
+            "api_key":"weRcon123",
+            "to": trainee_email,
+            "toname":trainee_name,
+            "subject": email_subject,
+            "html": email_html,
+            "from": "Medboard.co.uk <medboard.mail@gmail.com>",
+            "cc":'medboard.mail@gmail.com',
+                  }
+    )
+
+    if send_email.status_code == 200:
+        sent_email = send_email.status_code
+
+    return sent_email
+
+
+def send_cancellation_email(session_id):
+    # session_id = 37
+    session_record = db(db.sessions.id==session_id).select().first()
+
+    session_lead_name = session_record.session_lead_name
+    session_lead_email_address = session_record.session_lead_email
+    email_subject = "Medboard - Cancellation Notification"
+    email_html = HTML(BODY(H1('Medboard.co.uk'),P('Dear '+ session_lead_name), \
+        P(' This is a notification email from Medboard.'),
+        P(' A session that you were the session lead for has been cancelled. Details below:'),
+        HR(),
+        P('Session Title: ' + str(session_record.title)),
+        P('Session Date & Time: ' + str(session_record.start_datetime.strftime('%d-%m-%Y %H:%M'))),
+        HR(),
+        P('Please ensure the relevant people are aware of this cancellation. Students will be notified in a seperate email'),
+        P('Thanks,'),
+        P('Medboard'),
+
+        ))
+
+    sent_email = 999
+    send_email = requests.post(
+        "https://api.sendgrid.com/api/mail.send.json",
+#             auth=("api", "key-bb2f721881bfc7b739162a54a291f281"),
+            data={
+            "api_user":"bsharif",
+            "api_key":"weRcon123",
+            "to": session_lead_email_address,
+            "toname":session_lead_name,
+            "subject": email_subject,
+            "html": email_html,
+            "from": "Medboard.co.uk <medboard.mail@gmail.com>",
+            "cc":'medboard.mail@gmail.com',
+                  }
+    )
+
+    if send_email.status_code == 200:
+        sent_email = send_email.status_code
+
+    for trainee in session_record.attendee_ids:
+        user_record = db(db.auth_user.id==trainee).select().first()
+
+
+        session_lead_name = session_record.session_lead_name
+        session_lead_email_address = session_record.session_lead_email
+        trainee_name = user_record.first_name + " " + user_record.last_name
+        trainee_email = user_record.email
+        email_subject = "Medboard - Cancellation Notification"
+        email_html = HTML(BODY(H1('Medboard.co.uk'),P('Dear '+ trainee_name), \
+            P(' This is a notification email from Medboard.'),
+            P(' A session that you signed up to has been cancelled. Details below:'),
+            HR(),
+            P('Session Title: ' + str(session_record.title)),
+            P('Session Date & Time: ' + str(session_record.start_datetime.strftime('%d-%m-%Y %H:%M'))),
+            P('Session Lead: ' + str(session_record.session_lead_name)),
+            HR(),
+            P('Thanks,'),
+            P('Medboard'),
+
+            ))
+
+        sent_email = 999
+        send_email = requests.post(
+            "https://api.sendgrid.com/api/mail.send.json",
+    #             auth=("api", "key-bb2f721881bfc7b739162a54a291f281"),
+                data={
+                "api_user":"bsharif",
+                "api_key":"weRcon123",
+                "to": trainee_email,
+                "toname":trainee_name,
+                "subject": email_subject,
+                "html": email_html,
+                "from": "Medboard.co.uk <medboard.mail@gmail.com>",
+                "cc":'medboard.mail@gmail.com',
+                      }
+        )
+
+        if send_email.status_code == 200:
+            sent_email = send_email.status_code
 
     return sent_email
 
@@ -470,7 +607,8 @@ def sign_up():
             session_record.update_record(session_full=True)
 
         #send a signup email to session owner
-        email_result = send_email(session_id)
+        email_result = send_signup_email(session_id)
+        student_email = send_student_signup_email(session_id)
         if email_result:
             session.flash = "Signed up. Session lead notified"
         else:
@@ -587,7 +725,7 @@ def cancel_session():
             redirect(URL('cancel_repeating_session',vars={"s_id":session_id}))
         else:
             session_record.update_record(session_active=False)
-            #TODO >>>>>>>>>> SEND EMAIL UPDATE TO SIGNED UP USERS
+            send_cancellation_email(session_id)
             session.flash = "Session cancelled"
             redirect(URL('my_sessions'))
     else:
