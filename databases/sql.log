@@ -131,3 +131,49 @@ CREATE TABLE feedback(
     modified_by INTEGER REFERENCES auth_user (id) ON DELETE CASCADE
 );
 success!
+DROP TABLE session_types;
+success!
+DROP TABLE hospitals;
+timestamp: 2015-07-12T18:31:53.467259
+CREATE TABLE session_types(
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_type CHAR(512),
+    is_active CHAR(1),
+    created_on TIMESTAMP,
+    created_by INTEGER REFERENCES auth_user (id) ON DELETE CASCADE,
+    modified_on TIMESTAMP,
+    modified_by INTEGER REFERENCES auth_user (id) ON DELETE CASCADE
+);
+success!
+DROP TABLE session_types;
+success!
+timestamp: 2015-07-12T18:32:02.253138
+CREATE TABLE session_types(
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_type CHAR(512),
+    is_active CHAR(1),
+    created_on TIMESTAMP,
+    created_by INTEGER REFERENCES auth_user (id) ON DELETE CASCADE,
+    modified_on TIMESTAMP,
+    modified_by INTEGER REFERENCES auth_user (id) ON DELETE CASCADE
+);
+success!
+DROP TABLE session_types;
+success!
+timestamp: 2015-07-12T18:32:21.298612
+CREATE TABLE session_types(
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_type CHAR(512),
+    is_active CHAR(1),
+    created_on TIMESTAMP,
+    created_by INTEGER REFERENCES auth_user (id) ON DELETE CASCADE,
+    modified_on TIMESTAMP,
+    modified_by INTEGER REFERENCES auth_user (id) ON DELETE CASCADE
+);
+success!
+timestamp: 2015-07-26T17:35:28.573539
+ALTER TABLE hospitals ADD block_name CHAR(512);
+success!
+timestamp: 2015-09-02T12:58:33.987786
+ALTER TABLE sessions ADD session_lead_name CHAR(512);
+success!

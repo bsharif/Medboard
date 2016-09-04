@@ -1,0 +1,13 @@
+__init__.pyc 
+*.pyc 
+cache/ 
+databases/* 
+databases
+errors/*
+errors/
+sessions/*  
+sessions  
+private/
+uploads/*
+.git/
+*.sublime-project

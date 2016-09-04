@@ -62,7 +62,10 @@ plugins = PluginManager()
 db.define_table('hospitals',
                 Field('hospital_name','string'),
                 Field('hospital_code','string',length=3),   #limit to 3 letter hospital code
-                format = '%(hospital_code)s')  #this format string allows us to decide what details of the records to display when referencing this table from elsewhere (eg. on the user sign up form)
+                Field('block_name','string'),
+                format = '%(hospital_code)s - %(block_name)s')  #this format string allows us to decide what details of the records to display when referencing this table from elsewhere (eg. on the user sign up form)
+
+
 #***************************************************************
 #DEFINE A DATABASE OF ACCESS KEYS THAT CAN BE USED TO AUTOMATICALLY GIVE HIGHER LEVEL PERMISSIONS
 db.define_table('access_keys',
@@ -78,6 +81,8 @@ auth.settings.extra_fields['auth_user']= [
     Field('email_notifications','boolean',default=True)]     
 # for default hospital choices make reference to the hospitals table defined above - and require that the value equals something from that DB
 #***************************************************************
+#Make email addresses case insensitive
+auth.settings.email_case_sensitive = False
 
 ## create all tables needed by auth if not custom tables
 auth.define_tables(username=False, signature=False)

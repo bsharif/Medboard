@@ -2,6 +2,8 @@
 from uuid import uuid4
 #hospitals DATABASE IS DEFINED IN DB.PY (JUST BEFORE AUTH.DB) to allow inclusion of 'extra field' on sign up
 
+
+
 #table to store session types
 #eg. Theatre, Clinic, etc..
 db.define_table('session_types',
@@ -12,13 +14,13 @@ db.define_table('session_types',
 #both the hospitals table and session_types table need to be defined before the session table
 #MAYBE make some of these fields REQUIRED (eg Title, but not description!)
 
-
                         
 db.define_table('sessions',
                 Field('hospital','reference hospitals'), #default is set in the function that creates the form - eg. new_session()
                 Field('session_type','reference session_types'), 
-
-                Field('session_lead','reference auth_user', default=auth.user_id),
+                Field('session_type','reference session_types'), 
+                Field('session_lead','reference auth_user', default=auth.user_id, readable=False, writable=False),
+                Field('session_lead_name','string',requires=IS_NOT_EMPTY()),
                 #author field has been superseded by auth.signature (much more versatile and automatic)
                 #Field('author','reference auth_user', default=auth.user_id,writable=False,readable=False),   #need to make add this in production >> readable=False, writable=False
                 Field('title','string'),                    #apparently its good practice to define a length for string fields, maybe at production time?
@@ -36,9 +38,8 @@ db.define_table('sessions',
                 Field('uuid',length=64,default=uuid4(),readable=False,writable=False),
                 auth.signature,
                 format = '%(id)s')
-
 #VALIDATORS FOR SESSIONS TABLE
-db.sessions.hospital.requires = IS_EMPTY_OR(IS_IN_DB(db,'hospitals.id','%(hospital_name)s'))
+db.sessions.hospital.requires = IS_EMPTY_OR(IS_IN_DB(db,'hospitals.id','%(hospital_name)s - %(block_name)s'))
 # db.sessions.session_type.requires
                 #below line adds extra features to the SQLFORM (limits etc) but breaks the SQLFORM.grid by displaying IDs (format function doesn't work hmm!)
                 #,requires=IS_IN_DB(db,'session_types.id','%(session_type)s',zero=T('Choose one'),error_message="Please choose an option")  
@@ -54,7 +55,6 @@ db.sessions.duration.requires = IS_INT_IN_RANGE(5,500,error_message="Enter a tim
 db.sessions.max_attendees.requires = IS_NOT_EMPTY() 
 # db.sessions.current_attendees.requires
 # db.sessions.attendee_ids.requires
-
 
 
 

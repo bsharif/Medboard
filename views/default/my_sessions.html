@@ -27,10 +27,7 @@
 
 
   <div class="panel-body">
-              <h4>
-            Sessions Led
-        </h4>
-    {{=leader_sessions}} <hr><br>
+              
               <h4>
             Sessions Authored
         </h4>
@@ -68,21 +65,7 @@
 
          });
     } );
-    $(document).ready( function () {
-        $('#data_table_leader').DataTable( {
-            responsive: true,
-            scrollX: true,
-            scrollY: 250,
-            searching:false,
-            paging:false,
-            "order": [ 3, 'asc' ],
-            "columnDefs": [
-                            { "orderable": false, "targets": [5,6,7,8,9] }
-                          ]
-
-
-         });
-    } );
+    
     $(document).ready( function () {
         $('#data_table_authored').DataTable( {
             responsive: true,

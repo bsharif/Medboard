@@ -1,0 +1,523 @@
+(dp1
+S'output'
+p2
+S"<class 'sqlite3.IntegrityError'> FOREIGN KEY constraint failed"
+p3
+sS'layer'
+p4
+S'/home/nhshd15/web2py/applications/medboard/models/db1.py'
+p5
+sS'code'
+p6
+S'# -*- coding: utf-8 -*-\nfrom uuid import uuid4\n#hospitals DATABASE IS DEFINED IN DB.PY (JUST BEFORE AUTH.DB) to allow inclusion of \'extra field\' on sign up\n\n#table to store session types\n#eg. Theatre, Clinic, etc..\ndb.define_table(\'session_types\',\n                Field(\'session_type\',\'string\'),\n                auth.signature,\n                format = \'%(session_type)s\')\n\n#both the hospitals table and session_types table need to be defined before the session table\n#MAYBE make some of these fields REQUIRED (eg Title, but not description!)\n\n\n                        \ndb.define_table(\'sessions\',\n                Field(\'hospital\',\'reference hospitals\'), #default is set in the function that creates the form - eg. new_session()\n                Field(\'session_type\',\'reference session_types\'), \n\n                Field(\'session_lead\',\'reference auth_user\', default=auth.user_id),\n                #author field has been superseded by auth.signature (much more versatile and automatic)\n                #Field(\'author\',\'reference auth_user\', default=auth.user_id,writable=False,readable=False),   #need to make add this in production >> readable=False, writable=False\n                Field(\'title\',\'string\'),                    #apparently its good practice to define a length for string fields, maybe at production time?\n                Field(\'description\',\'text\'),\n                Field(\'session_location\',\'string\'),\n                Field(\'start_datetime\',\'datetime\'), #datepicker has been updated to match in web2py_ajax\n                Field(\'duration\',\'integer\'),\n                Field(\'max_attendees\',\'integer\',),\n                Field(\'current_attendees\',\'integer\',default=0,readable=False,writable=False),\n                Field(\'attendee_ids\',\'list:reference auth_user\',default=[],readable=False,writable=False),   #need to make add this in production >> readable=False, writable=False \n                                                                 #**OR** just maybe not display it? does read/write prevent it being changed from the controller?\n                Field(\'repeating\',\'boolean\',readable=False,writable=False),\n                Field(\'session_active\',\'boolean\',default=True, readable=False,writable=False),     \n                Field(\'session_full\',\'boolean\', default=False,writable=False,readable=False),\n                Field(\'uuid\',length=64,default=uuid4(),readable=False,writable=False),\n                auth.signature,\n                format = \'%(id)s\')\n\n#VALIDATORS FOR SESSIONS TABLE\ndb.sessions.hospital.requires = IS_EMPTY_OR(IS_IN_DB(db,\'hospitals.id\',\'%(hospital_name)s\'))\n# db.sessions.session_type.requires\n                #below line adds extra features to the SQLFORM (limits etc) but breaks the SQLFORM.grid by displaying IDs (format function doesn\'t work hmm!)\n                #,requires=IS_IN_DB(db,\'session_types.id\',\'%(session_type)s\',zero=T(\'Choose one\'),error_message="Please choose an option")  \nrestrict_lead_query = ((db.auth_user.id == db.auth_membership.user_id)&\n           ((db.auth_membership.group_id == 2)|(db.auth_membership.group_id == 3)))\ndb.sessions.session_lead.requires=IS_IN_DB(db(restrict_lead_query), db.auth_user.id, \'%(first_name)s %(last_name)s (%(email)s)\')\n\ndb.sessions.title.requires = IS_NOT_EMPTY()\n# db.sessions.description.requires\n# db.sessions.session_location.requires\ndb.sessions.start_datetime.requires = IS_DATETIME(format=T(\'%d-%m-%y %H:%M\'),error_message=\'Must be dd-mm-yy HH:MM\')\ndb.sessions.duration.requires = IS_INT_IN_RANGE(5,500,error_message="Enter a time between 5 and 500 minutes")\ndb.sessions.max_attendees.requires = IS_NOT_EMPTY() \n# db.sessions.current_attendees.requires\n# db.sessions.attendee_ids.requires\n\n\n\n\ndb.define_table(\'feedback\',\n                Field(\'session_id\',\'reference sessions\',readable=False,writable=False),\n                Field(\'user_id\',\'reference auth_user\',default=auth.user_id,readable=False,writable=False),\n                Field(\'rate_interesting\',\'integer\',requires=IS_INT_IN_RANGE(1,11)),\n                Field(\'rate_relevance\',\'integer\',requires=IS_INT_IN_RANGE(1,11)),\n                Field(\'rate_teaching\',\'integer\',requires=IS_INT_IN_RANGE(1,11)),\n                Field(\'rate_overall\',\'integer\',requires=IS_INT_IN_RANGE(1,11)),\n                Field(\'rate_confidence\',\'integer\',requires=IS_IN_SET([\'Yes\',\'No\',\'Unsure\'])),\n                Field(\'positive_points\',\'text\'),\n                Field(\'negative_points\',\'text\'),\n                Field(\'improvements\',\'text\'),\n                auth.signature)\n\n#set format to display user names when referencing auth.id\ndb.auth_user._format = \'%(first_name)s %(last_name)s\'\n\n#************************************\n#SWITCH SESSIONS TO INACTIVE IF DATE HAS PASSED\n#Get current datetime using datetime module.\n#Get all session still marked as session_active=True\n#If current datetime greater than datetime of session then set session_active to False\nfrom datetime import datetime\nnow = datetime.now()\nrows = db(db.sessions.session_active==True).select()\nfor row in rows:\n    if row.start_datetime < now:\n        db.sessions[row.id] = dict(session_active=False)  #this is shortcut DAL code to update a record/field\n\n#************************************\n#CHECK IF USER HAS PROVIDED A VALID ACCESS KEY AND PROCESS IT\n#KEYS ARE STORED IN db.access_keys\n#EACH KEY IS LINKED TO AN ACCESS LEVEL\n#IF THE KEY PROVIDED MATCHES ONE IN db.access_keys THEN... \n#ASSIGN USER THE APPROPRIATE ACCESS LEVEL\n#WRITTEN AS A FUNCTION TO ALLOW USE AFTER INITAL SIGN UP (eg. if user did not have key initally)\ndef grant_new_access():\n    if auth.user_id:\n        user_id = auth.user_id\n        user_key = auth.user.access_key\n        access_keys = db(db.access_keys.key_active==True).select()\n        for single_key in access_keys:\n            if single_key.unique_key == user_key:\n                access_level = single_key.access_level\n                if access_level == \'session_lead\':\n                    auth.add_membership(2, user_id)\n                elif access_level == \'undergrad\':\n                    auth.add_membership(3, user_id)\n                elif access_level == \'hospital\':\n                    auth.add_membership(4, user_id)\n                elif access_level == \'administrator\':\n                    auth.add_membership(5, user_id)\n\ngrant_new_access()\n#****************************************\n\n\n####************AUTOCOMLETE widget for locations!\n#::::::COMMENTS\n# First part is working with creating an autocomplete widget\n# However it only allows users to enter locations that have been previously created/entered into db\n# Needs to be modified to allow entry of new items/items not in the autocomplete\n# If that is fixed then the second section works well - it loops through entered locations and adds them to the locations db for future use\n# :::::::::::::::::DISABLED FOR NOW\n#::::::::::::::::::::::::::::::::::::::::::::\n#PART ONE\n# db.define_table(\'locations\',\n#                 Field(\'name\',\'string\'))\n# db.sessions.session_location.widget = SQLFORM.widgets.autocomplete(request, db.locations.name, id_field=db.locations.id)\n\n#PART TWO\n# session_rows = db(db.sessions).select()\n# location_rows = db(db.locations).select()\n# location_found = False\n# for session_row in session_rows:\n#     location_name = session_row.session_location\n#     for location_row in location_rows:\n#         if location_name == location_row.name:\n#             location_found = True\n#     if not location_found:\n#         db.locations.insert(name=location_name)\n#::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::\n#to drop a table....\n# db.table_name.drop()\n#::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::\n\n#TODO On Browse, display full session too??\n#TODO Update session report with feedbacks - include confidence improved..!\n#TODO Update tables to display in DataTables format (and on repeating sessions etc)\n#TODO Fix Browse with default hospital display (if no arg ALL then displaying default hospital but in ALL type format)\n#TODO Mark \'active\'/\'not active\' if dates changes from previous to new\n#TODO Mark uneditable if in past\n#TODO Admin management page\n#TODO 2 more print out styles - certificate, student report (incl from admin page)\n#TODO About page\n# TODO fix ordering disabler if not displaying holpital column - on BROWSE.html\n'
+p7
+sS'snapshot'
+p8
+(dp9
+S'exception'
+p10
+(dp11
+S'__module__'
+p12
+S"'sqlite3'"
+p13
+sS'__getslice__'
+p14
+S"<method-wrapper '__getslice__' of IntegrityError object>"
+p15
+sS'__str__'
+p16
+S"<method-wrapper '__str__' of IntegrityError object>"
+p17
+sS'__reduce__'
+p18
+S'<built-in method __reduce__ of IntegrityError object>'
+p19
+sS'__dict__'
+p20
+S'{}'
+p21
+sS'__sizeof__'
+p22
+S'<built-in method __sizeof__ of IntegrityError object>'
+p23
+sS'__weakref__'
+p24
+S'None'
+p25
+sS'__init__'
+p26
+S"<method-wrapper '__init__' of IntegrityError object>"
+p27
+sS'__setattr__'
+p28
+S"<method-wrapper '__setattr__' of IntegrityError object>"
+p29
+sS'__reduce_ex__'
+p30
+S'<built-in method __reduce_ex__ of IntegrityError object>'
+p31
+sS'__new__'
+p32
+S'<built-in method __new__ of type object>'
+p33
+sS'__format__'
+p34
+S'<built-in method __format__ of IntegrityError object>'
+p35
+sS'__class__'
+p36
+S"<class 'sqlite3.IntegrityError'>"
+p37
+sS'__doc__'
+p38
+S'None'
+p39
+sS'__getitem__'
+p40
+S"<method-wrapper '__getitem__' of IntegrityError object>"
+p41
+sS'__setstate__'
+p42
+S'<built-in method __setstate__ of IntegrityError object>'
+p43
+sS'__getattribute__'
+p44
+S"<method-wrapper '__getattribute__' of IntegrityError object>"
+p45
+sS'args'
+p46
+S"('FOREIGN KEY constraint failed',)"
+p47
+sS'__subclasshook__'
+p48
+S'<built-in method __subclasshook__ of type object>'
+p49
+sS'__unicode__'
+p50
+S'<built-in method __unicode__ of IntegrityError object>'
+p51
+sS'__delattr__'
+p52
+S"<method-wrapper '__delattr__' of IntegrityError object>"
+p53
+sS'__repr__'
+p54
+S"<method-wrapper '__repr__' of IntegrityError object>"
+p55
+sS'__hash__'
+p56
+S"<method-wrapper '__hash__' of IntegrityError object>"
+p57
+ssS'evalue'
+p58
+S'FOREIGN KEY constraint failed'
+p59
+sS'request'
+p60
+cgluon.html
+XML_unpickle
+p61
+(S'syW\x00\x00<div><table><tr><td style="font-weight:bold;vertical-align:top;">ajax</td><td style="vertical-align:top;">:</td><td><div>False</div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">application</td><td style="vertical-align:top;">:</td><td><div>medboard</div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">args</td><td style="vertical-align:top;">:</td><td><div><table></table></div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">cid</td><td style="vertical-align:top;">:</td><td><div>None</div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">client</td><td style="vertical-align:top;">:</td><td><div>86.180.54.34</div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">controller</td><td style="vertical-align:top;">:</td><td><div>appadmin</div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">cookies</td><td style="vertical-align:top;">:</td><td><div><table><tr><td style="font-weight:bold;vertical-align:top;">session_id_admin</td><td style="vertical-align:top;">:</td><td><div>86.180.53.181-670ba230-4a7c-4990-8bde-285fcaa3c5b8<table><tr><td style="font-weight:bold;vertical-align:top;">comment</td><td style="vertical-align:top;">:</td><td><div></div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">domain</td><td style="vertical-align:top;">:</td><td><div></div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">expires</td><td style="vertical-align:top;">:</td><td><div></div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">httponly</td><td style="vertical-align:top;">:</td><td><div></div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">max-age</td><td style="vertical-align:top;">:</td><td><div></div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">path</td><td style="vertical-align:top;">:</td><td><div></div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">secure</td><td style="vertical-align:top;">:</td><td><div></div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">version</td><td style="vertical-align:top;">:</td><td><div></div></td></tr></table></div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">session_id_medboard</td><td style="vertical-align:top;">:</td><td><div>86.180.54.34-160bac9c-ea12-49f0-a3c6-767ac17e9cf9<table><tr><td style="font-weight:bold;vertical-align:top;">comment</td><td style="vertical-align:top;">:</td><td><div></div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">domain</td><td style="vertical-align:top;">:</td><td><div></div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">expires</td><td style="vertical-align:top;">:</td><td><div></div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">httponly</td><td style="vertical-align:top;">:</td><td><div></div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">max-age</td><td style="vertical-align:top;">:</td><td><div></div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">path</td><td style="vertical-align:top;">:</td><td><div></div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">secure</td><td style="vertical-align:top;">:</td><td><div></div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">version</td><td style="vertical-align:top;">:</td><td><div></div></td></tr></table></div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">session_id_thecore_wales</td><td style="vertical-align:top;">:</td><td><div>109.149.220.213-ce6b736f-c5e1-48ca-bce0-cfff727d8d6f<table><tr><td style="font-weight:bold;vertical-align:top;">comment</td><td style="vertical-align:top;">:</td><td><div></div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">domain</td><td style="vertical-align:top;">:</td><td><div></div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">expires</td><td style="vertical-align:top;">:</td><td><div></div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">httponly</td><td style="vertical-align:top;">:</td><td><div></div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">max-age</td><td style="vertical-align:top;">:</td><td><div></div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">path</td><td style="vertical-align:top;">:</td><td><div></div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">secure</td><td style="vertical-align:top;">:</td><td><div></div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">version</td><td style="vertical-align:top;">:</td><td><div></div></td></tr></table></div></td></tr></table></div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">env</td><td style="vertical-align:top;">:</td><td><div><table><tr><td style="font-weight:bold;vertical-align:top;">CONTENT_LENGTH</td><td style="vertical-align:top;">:</td><td><div></div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">CONTENT_TYPE</td><td style="vertical-align:top;">:</td><td><div></div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">DOCUMENT_ROOT</td><td style="vertical-align:top;">:</td><td><div>/usr/local/openresty/nginx/html</div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">HTTPS</td><td style="vertical-align:top;">:</td><td><div>on</div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">HTTP_ACCEPT</td><td style="vertical-align:top;">:</td><td><div>text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8</div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">HTTP_ACCEPT_ENCODING</td><td style="vertical-align:top;">:</td><td><div>gzip, deflate, sdch</div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">HTTP_ACCEPT_LANGUAGE</td><td style="vertical-align:top;">:</td><td><div>en-GB,en;q=0.8</div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">HTTP_CONNECTION</td><td style="vertical-align:top;">:</td><td><div>close</div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">HTTP_COOKIE</td><td style="vertical-align:top;">:</td><td><div>_ga=GA1.2.669482136.1435252128; session_id_thecore_wales=109.149.220.213-ce6b736f-c5e1-48ca-bce0-cfff727d8d6f; session_id_medboard=86.180.54.34-160bac9c-ea12-49f0-a3c6-767ac17e9cf9; session_id_admin=86.180.53.181-670ba230-4a7c-4990-8bde-285fcaa3c5b8</div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">HTTP_HOST</td><td style="vertical-align:top;">:</td><td><div>nhshd15.pythonanywhere.com</div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">HTTP_REFERER</td><td style="vertical-align:top;">:</td><td><div>https://nhshd15.pythonanywhere.com/admin/default/design/medboard</div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">HTTP_USER_AGENT</td><td style="vertical-align:top;">:</td><td><div>Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/43.0.2357.130 Safari/537.36</div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">HTTP_X_FORWARDED_FOR</td><td style="vertical-align:top;">:</td><td><div>86.180.54.34</div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">HTTP_X_REAL_IP</td><td style="vertical-align:top;">:</td><td><div>86.180.54.34</div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">PATH_INFO</td><td style="vertical-align:top;">:</td><td><div>/medboard/appadmin/index</div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">QUERY_STRING</td><td style="vertical-align:top;">:</td><td><div></div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">REMOTE_ADDR</td><td style="vertical-align:top;">:</td><td><div>10.164.223.15</div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">REMOTE_PORT</td><td style="vertical-align:top;">:</td><td><div>46499</div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">REQUEST_METHOD</td><td style="vertical-align:top;">:</td><td><div>GET</div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">REQUEST_URI</td><td style="vertical-align:top;">:</td><td><div>/medboard/appadmin/index</div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">SCRIPT_NAME</td><td style="vertical-align:top;">:</td><td><div></div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">SERVER_NAME</td><td style="vertical-align:top;">:</td><td><div>nhshd15.pythonanywhere.com</div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">SERVER_PORT</td><td style="vertical-align:top;">:</td><td><div>443</div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">SERVER_PROTOCOL</td><td style="vertical-align:top;">:</td><td><div>HTTP/1.1</div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">app_folders</td><td style="vertical-align:top;">:</td><td><div>set([&#x27;/home/nhshd15/web2py/applications/procl/&#x27;, &#x27;/home/nhshd15/web2py/applications/lipids/&#x27;, &#x27;/home/nhshd15/web2py/applications/medboard/&#x27;, &#x27;/home/nhshd15/web2py/applications/admin/&#x27;])</div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">applications_parent</td><td style="vertical-align:top;">:</td><td><div>/home/nhshd15/web2py</div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">content_length</td><td style="vertical-align:top;">:</td><td><div></div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">content_type</td><td style="vertical-align:top;">:</td><td><div></div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">db_sessions</td><td style="vertical-align:top;">:</td><td><div>set([])</div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">debugging</td><td style="vertical-align:top;">:</td><td><div>False</div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">document_root</td><td style="vertical-align:top;">:</td><td><div>/usr/local/openresty/nginx/html</div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">gluon_parent</td><td style="vertical-align:top;">:</td><td><div>/home/nhshd15/web2py</div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">http_accept</td><td style="vertical-align:top;">:</td><td><div>text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8</div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">http_accept_encoding</td><td style="vertical-align:top;">:</td><td><div>gzip, deflate, sdch</div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">http_accept_language</td><td style="vertical-align:top;">:</td><td><div>en-GB,en;q=0.8</div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">http_connection</td><td style="vertical-align:top;">:</td><td><div>close</div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">http_cookie</td><td style="vertical-align:top;">:</td><td><div>_ga=GA1.2.669482136.1435252128; session_id_thecore_wales=109.149.220.213-ce6b736f-c5e1-48ca-bce0-cfff727d8d6f; session_id_medboard=86.180.54.34-160bac9c-ea12-49f0-a3c6-767ac17e9cf9; session_id_admin=86.180.53.181-670ba230-4a7c-4990-8bde-285fcaa3c5b8</div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">http_host</td><td style="vertical-align:top;">:</td><td><div>nhshd15.pythonanywhere.com</div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">http_referer</td><td style="vertical-align:top;">:</td><td><div>https://nhshd15.pythonanywhere.com/admin/default/design/medboard</div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">http_user_agent</td><td style="vertical-align:top;">:</td><td><div>Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/43.0.2357.130 Safari/537.36</div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">http_x_forwarded_for</td><td style="vertical-align:top;">:</td><td><div>86.180.54.34</div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">http_x_real_ip</td><td style="vertical-align:top;">:</td><td><div>86.180.54.34</div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">https</td><td style="vertical-align:top;">:</td><td><div>on</div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">is_jython</td><td style="vertical-align:top;">:</td><td><div>False</div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">is_pypy</td><td style="vertical-align:top;">:</td><td><div>False</div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">is_source</td><td style="vertical-align:top;">:</td><td><div>True</div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">local_hosts</td><td style="vertical-align:top;">:</td><td><div><table><tr><td><div>::ffff:127.0.0.1</div></td></tr><tr><td><div>::1</div></td></tr><tr><td><div>50.19.109.98</div></td></tr><tr><td><div>nhshd15.pythonanywhere.com</div></td></tr><tr><td><div>127.0.0.1</div></td></tr><tr><td><div>glenn-liveweb2</div></td></tr><tr><td><div>localhost</div></td></tr></table></div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">path_info</td><td style="vertical-align:top;">:</td><td><div>/medboard/appadmin/index</div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">query_string</td><td style="vertical-align:top;">:</td><td><div></div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">remote_addr</td><td style="vertical-align:top;">:</td><td><div>10.164.223.15</div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">remote_port</td><td style="vertical-align:top;">:</td><td><div>46499</div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">request_method</td><td style="vertical-align:top;">:</td><td><div>GET</div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">request_uri</td><td style="vertical-align:top;">:</td><td><div>/medboard/appadmin/index</div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">script_name</td><td style="vertical-align:top;">:</td><td><div></div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">server_name</td><td style="vertical-align:top;">:</td><td><div>nhshd15.pythonanywhere.com</div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">server_port</td><td style="vertical-align:top;">:</td><td><div>443</div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">server_protocol</td><td style="vertical-align:top;">:</td><td><div>HTTP/1.1</div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">uwsgi.node</td><td style="vertical-align:top;">:</td><td><div>glenn-liveweb2</div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">uwsgi.version</td><td style="vertical-align:top;">:</td><td><div>2.0.5.1</div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">uwsgi_node</td><td style="vertical-align:top;">:</td><td><div>glenn-liveweb2</div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">uwsgi_version</td><td style="vertical-align:top;">:</td><td><div>2.0.5.1</div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">web2py_path</td><td style="vertical-align:top;">:</td><td><div>/home/nhshd15/web2py</div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">web2py_version</td><td style="vertical-align:top;">:</td><td><div>2.10.4-stable+timestamp.2015.04.26.15.11.54</div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">wsgi.errors</td><td style="vertical-align:top;">:</td><td><div>&lt;uwsgi_file__bin_user_wsgi_wrapper.ErrorLogFile object at 0x7f3906cdd550&gt;</div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">wsgi.file_wrapper</td><td style="vertical-align:top;">:</td><td><div>&lt;built-in function uwsgi_sendfile&gt;</div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">wsgi.input</td><td style="vertical-align:top;">:</td><td><div>&lt;uwsgi._Input object at 0x7f3911059f90&gt;</div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">wsgi.multiprocess</td><td style="vertical-align:top;">:</td><td><div>False</div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">wsgi.multithread</td><td style="vertical-align:top;">:</td><td><div>False</div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">wsgi.run_once</td><td style="vertical-align:top;">:</td><td><div>False</div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">wsgi.url_scheme</td><td style="vertical-align:top;">:</td><td><div>https</div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">wsgi.version</td><td style="vertical-align:top;">:</td><td><div><table><tr><td><div>1</div></td></tr><tr><td><div>0</div></td></tr></table></div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">wsgi_errors</td><td style="vertical-align:top;">:</td><td><div>&lt;uwsgi_file__bin_user_wsgi_wrapper.ErrorLogFile object at 0x7f3906cdd550&gt;</div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">wsgi_file_wrapper</td><td style="vertical-align:top;">:</td><td><div>&lt;built-in function uwsgi_sendfile&gt;</div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">wsgi_input</td><td style="vertical-align:top;">:</td><td><div>&lt;uwsgi._Input object at 0x7f3911059f90&gt;</div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">wsgi_multiprocess</td><td style="vertical-align:top;">:</td><td><div>False</div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">wsgi_multithread</td><td style="vertical-align:top;">:</td><td><div>False</div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">wsgi_run_once</td><td style="vertical-align:top;">:</td><td><div>False</div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">wsgi_url_scheme</td><td style="vertical-align:top;">:</td><td><div>https</div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">wsgi_version</td><td style="vertical-align:top;">:</td><td><div><table><tr><td><div>1</div></td></tr><tr><td><div>0</div></td></tr></table></div></td></tr></table></div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">extension</td><td style="vertical-align:top;">:</td><td><div>html</div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">folder</td><td style="vertical-align:top;">:</td><td><div>/home/nhshd15/web2py/applications/medboard/</div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">function</td><td style="vertical-align:top;">:</td><td><div>index</div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">global_settings</td><td style="vertical-align:top;">:</td><td><div><table><tr><td style="font-weight:bold;vertical-align:top;">app_folders</td><td style="vertical-align:top;">:</td><td><div>set([&#x27;/home/nhshd15/web2py/applications/procl/&#x27;, &#x27;/home/nhshd15/web2py/applications/lipids/&#x27;, &#x27;/home/nhshd15/web2py/applications/medboard/&#x27;, &#x27;/home/nhshd15/web2py/applications/admin/&#x27;])</div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">applications_parent</td><td style="vertical-align:top;">:</td><td><div>/home/nhshd15/web2py</div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">db_sessions</td><td style="vertical-align:top;">:</td><td><div>set([])</div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">debugging</td><td style="vertical-align:top;">:</td><td><div>False</div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">gluon_parent</td><td style="vertical-align:top;">:</td><td><div>/home/nhshd15/web2py</div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">is_jython</td><td style="vertical-align:top;">:</td><td><div>False</div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">is_pypy</td><td style="vertical-align:top;">:</td><td><div>False</div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">is_source</td><td style="vertical-align:top;">:</td><td><div>True</div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">local_hosts</td><td style="vertical-align:top;">:</td><td><div><table><tr><td><div>::ffff:127.0.0.1</div></td></tr><tr><td><div>::1</div></td></tr><tr><td><div>50.19.109.98</div></td></tr><tr><td><div>nhshd15.pythonanywhere.com</div></td></tr><tr><td><div>127.0.0.1</div></td></tr><tr><td><div>glenn-liveweb2</div></td></tr><tr><td><div>localhost</div></td></tr></table></div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">web2py_version</td><td style="vertical-align:top;">:</td><td><div>2.10.4-stable+timestamp.2015.04.26.15.11.54</div></td></tr></table></div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">is_https</td><td style="vertical-align:top;">:</td><td><div>True</div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">is_local</td><td style="vertical-align:top;">:</td><td><div>False</div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">is_restful</td><td style="vertical-align:top;">:</td><td><div>False</div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">is_sheduler</td><td style="vertical-align:top;">:</td><td><div>None</div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">is_shell</td><td style="vertical-align:top;">:</td><td><div>None</div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">now</td><td style="vertical-align:top;">:</td><td><div>datetime.datetime(2015, 7, 12, 18, 22, 42, 67019)</div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">raw_args</td><td style="vertical-align:top;">:</td><td><div></div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">raw_extension</td><td style="vertical-align:top;">:</td><td><div>None</div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">url</td><td style="vertical-align:top;">:</td><td><div>/medboard/appadmin/index</div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">utcnow</td><td style="vertical-align:top;">:</td><td><div>datetime.datetime(2015, 7, 12, 18, 22, 42, 67036)</div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">uuid</td><td style="vertical-align:top;">:</td><td><div>medboard/86.180.54.34.2015-07-12.18-22-42.4ab884cb-d716-4601-b49a-4992010ab9b9</div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">wsgi</td><td style="vertical-align:top;">:</td><td><div>&lt;gluon.main.LazyWSGI object at 0x7f38eff9ead0&gt;</div></td></tr></table></div>'
+tRp62
+sS'frames'
+p63
+(lp64
+(dp65
+S'file'
+p66
+S'/home/nhshd15/web2py/gluon/restricted.py'
+p67
+sS'dump'
+p68
+(dp69
+S'environment'
+p70
+S"{'A': <class 'gluon.html.A'>, 'ANY_OF': <class 'gluon.validators.ANY_OF'>, 'ASSIGNJS': <function ASSIGNJS>, 'AppConfig': <function AppConfig>, 'Auth': <class 'gluon.tools.Auth'>, 'B': <class 'gluon.html.B'>, 'BEAUTIFY': <class 'gluon.html.BEAUTIFY'>, 'BODY': <class 'gluon.html.BODY'>, 'BR': <class 'gluon.html.BR'>, 'BUTTON': <class 'gluon.html.BUTTON'>, ...}"
+p71
+sS'ccode'
+p72
+S'<code object <module> at 0x7f38eff856b0, file "/...2py/applications/medboard/models/db1.py", line 2>'
+p73
+ssS'lnum'
+p74
+I227
+sS'lines'
+p75
+(dp76
+I224
+S'            ccode = code'
+p77
+sI225
+S'        else:'
+p78
+sI226
+S'            ccode = compile2(code, layer)'
+p79
+sI227
+S'        exec ccode in environment'
+p80
+sI228
+S'    except HTTP:'
+p81
+sI229
+S'        raise'
+p82
+sI230
+S'    except RestrictedError:'
+p83
+sI231
+S'        # do not encapsulate (obfuscate) the original RestrictedError'
+p84
+sI222
+S'    try:'
+p85
+sI223
+S'        if isinstance(code, types.CodeType):'
+p86
+ssS'call'
+p87
+S"(code='# -*- coding: utf-8 -*-\\nfrom uuid import uuid4\\n#... not displaying holpital column - on BROWSE.html\\n', environment={'A': <class 'gluon.html.A'>, 'ANY_OF': <class 'gluon.validators.ANY_OF'>, 'ASSIGNJS': <function ASSIGNJS>, 'AppConfig': <function AppConfig>, 'Auth': <class 'gluon.tools.Auth'>, 'B': <class 'gluon.html.B'>, 'BEAUTIFY': <class 'gluon.html.BEAUTIFY'>, 'BODY': <class 'gluon.html.BODY'>, 'BR': <class 'gluon.html.BR'>, 'BUTTON': <class 'gluon.html.BUTTON'>, ...}, layer='/home/nhshd15/web2py/applications/medboard/models/db1.py')"
+p88
+sS'func'
+p89
+S'restricted'
+p90
+sa(dp91
+g66
+S'/home/nhshd15/web2py/applications/medboard/models/db1.py'
+p92
+sg68
+(dp93
+S'grant_new_access'
+p94
+S'<function grant_new_access>'
+p95
+ssg74
+I113
+sg75
+(dp96
+I108
+S"                elif access_level == 'hospital':"
+p97
+sI109
+S'                    auth.add_membership(4, user_id)'
+p98
+sI110
+S"                elif access_level == 'administrator':"
+p99
+sI111
+S'                    auth.add_membership(5, user_id)'
+p100
+sI112
+S''
+sI113
+S'grant_new_access()'
+p101
+sI114
+S'#****************************************'
+p102
+sI115
+S''
+sI116
+S''
+sI117
+S'####************AUTOCOMLETE widget for locations!'
+p103
+ssg87
+S'()'
+p104
+sg89
+S'<module>'
+p105
+sa(dp106
+g66
+S'/home/nhshd15/web2py/applications/medboard/models/db1.py'
+p107
+sg68
+(dp108
+S'user_id'
+p109
+S'3L'
+p110
+sS'global auth'
+p111
+S'<gluon.tools.Auth object>'
+p112
+sS'auth.add_membership'
+p113
+S'<bound method Auth.add_membership of <gluon.tools.Auth object>>'
+p114
+ssg74
+I111
+sg75
+(dp115
+I106
+S"                elif access_level == 'undergrad':"
+p116
+sI107
+S'                    auth.add_membership(3, user_id)'
+p117
+sI108
+S"                elif access_level == 'hospital':"
+p118
+sI109
+S'                    auth.add_membership(4, user_id)'
+p119
+sI110
+S"                elif access_level == 'administrator':"
+p120
+sI111
+S'                    auth.add_membership(5, user_id)'
+p121
+sI112
+S''
+sI113
+S'grant_new_access()'
+p122
+sI114
+S'#****************************************'
+p123
+sI115
+S''
+ssg87
+S'()'
+p124
+sg89
+S'grant_new_access'
+p125
+sa(dp126
+g66
+S'/home/nhshd15/web2py/gluon/tools.py'
+p127
+sg68
+(dp128
+S'membership.insert'
+p129
+S'<bound method Table.insert of <Table auth_membership (id,user_id,group_id)>>'
+p130
+sS'membership'
+p131
+S'<Table auth_membership (id,user_id,group_id)>'
+p132
+sS'group_id'
+p133
+S'5'
+sS'user_id'
+p134
+S'3L'
+p135
+sS'builtinid'
+p136
+S'<built-in function id>'
+p137
+ssg74
+I3573
+sg75
+(dp138
+I3568
+S'        membership = self.table_membership()'
+p139
+sI3569
+S'        record = membership(user_id=user_id, group_id=group_id)'
+p140
+sI3570
+S'        if record:'
+p141
+sI3571
+S'            return record.id'
+p142
+sI3572
+S'        else:'
+p143
+sI3573
+S'            id = membership.insert(group_id=group_id, user_id=user_id)'
+p144
+sI3574
+S'        if role:'
+p145
+sI3575
+S'            self.user_groups[group_id] = role'
+p146
+sI3576
+S'        else:'
+p147
+sI3577
+S'            self.update_groups()'
+p148
+ssg87
+S'(self=<gluon.tools.Auth object>, group_id=5, user_id=3L, role=None)'
+p149
+sg89
+S'add_membership'
+p150
+sa(dp151
+g66
+S'/home/nhshd15/web2py/gluon/packages/dal/pydal/objects.py'
+p152
+sg68
+(dp153
+S'self._listify'
+p154
+S'<bound method Table._listify of <Table auth_membership (id,user_id,group_id)>>'
+p155
+sS'fields'
+p156
+S"{'group_id': 5, 'user_id': 3L}"
+p157
+sS'self'
+p158
+S'<Table auth_membership (id,user_id,group_id)>'
+p159
+sS'ret'
+p160
+S'undefined'
+p161
+sS'self._db._adapter'
+p162
+S'<pydal.adapters.sqlite.SQLiteAdapter object>'
+p163
+sS'self._db._adapter.insert'
+p164
+S'<bound method SQLiteAdapter.insert of <pydal.adapters.sqlite.SQLiteAdapter object>>'
+p165
+sS'self._db'
+p166
+S'<DAL uri="sqlite://storage.sqlite">'
+p167
+ssg74
+I737
+sg75
+(dp168
+I736
+S'        if any(f(fields) for f in self._before_insert): return 0'
+p169
+sI737
+S'        ret =  self._db._adapter.insert(self, self._listify(fields))'
+p170
+sI738
+S'        if ret and self._after_insert:'
+p171
+sI739
+S'            fields = Row(fields)'
+p172
+sI740
+S'            [f(fields,ret) for f in self._after_insert]'
+p173
+sI741
+S'        return ret'
+p174
+sI732
+S''
+sI733
+S'    def insert(self, **fields):'
+p175
+sI734
+S'        fields = self._defaults(fields)'
+p176
+sI735
+S'        self._attempt_upload(fields)'
+p177
+ssg87
+S"(self=<Table auth_membership (id,user_id,group_id)>, **fields={'group_id': 5, 'user_id': 3L})"
+p178
+sg89
+S'insert'
+p179
+sa(dp180
+g66
+S'/home/nhshd15/web2py/gluon/packages/dal/pydal/adapters/base.py'
+p181
+sg68
+(dp182
+S'e'
+S"IntegrityError('FOREIGN KEY constraint failed',)"
+p183
+ssg74
+I727
+sg75
+(dp184
+I722
+S'            self.execute(query)'
+p185
+sI723
+S'        except Exception:'
+p186
+sI724
+S'            e = sys.exc_info()[1]'
+p187
+sI725
+S"            if hasattr(table,'_on_insert_error'):"
+p188
+sI726
+S'                return table._on_insert_error(table,fields,e)'
+p189
+sI727
+S'            raise e'
+p190
+sI728
+S"        if hasattr(table, '_primarykey'):"
+p191
+sI729
+S'            mydict = dict([(k[0].name, k[1]) for k in fields if k[0].name in table._primarykey])'
+p192
+sI730
+S'            if mydict != {}:'
+p193
+sI731
+S'                return mydict'
+p194
+ssg87
+S'(self=<pydal.adapters.sqlite.SQLiteAdapter object>, table=<Table auth_membership (id,user_id,group_id)>, fields=[(<pydal.objects.Field object>, 5), (<pydal.objects.Field object>, 3L)])'
+p195
+sg89
+g179
+sasS'pyver'
+p196
+S'Python 2.7.6: /usr/local/bin/uwsgi (prefix: /usr)'
+p197
+sS'session'
+p198
+g61
+(S's\xbe\x0c\x00\x00<div><table><tr><td style="font-weight:bold;vertical-align:top;">auth</td><td style="vertical-align:top;">:</td><td><div><table><tr><td style="font-weight:bold;vertical-align:top;">expiration</td><td style="vertical-align:top;">:</td><td><div>3600</div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">hmac_key</td><td style="vertical-align:top;">:</td><td><div>6b77ca17-4b9a-40b9-96b7-470c213f75e2</div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">last_visit</td><td style="vertical-align:top;">:</td><td><div>datetime.datetime(2015, 7, 12, 18, 19, 14, 172700)</div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">remember_me</td><td style="vertical-align:top;">:</td><td><div>False</div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">user</td><td style="vertical-align:top;">:</td><td><div><table><tr><td style="font-weight:bold;vertical-align:top;">access_key</td><td style="vertical-align:top;">:</td><td><div>AD1310</div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">default_hospital</td><td style="vertical-align:top;">:</td><td><div>1L</div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">email</td><td style="vertical-align:top;">:</td><td><div>sharifbs@cardiff.ac.uk</div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">email_notifications</td><td style="vertical-align:top;">:</td><td><div>True</div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">first_name</td><td style="vertical-align:top;">:</td><td><div>Ben</div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">id</td><td style="vertical-align:top;">:</td><td><div>3L</div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">last_name</td><td style="vertical-align:top;">:</td><td><div>Sharif</div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">registration_id</td><td style="vertical-align:top;">:</td><td><div></div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">registration_key</td><td style="vertical-align:top;">:</td><td><div></div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">reset_password_key</td><td style="vertical-align:top;">:</td><td><div></div></td></tr></table></div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">user_groups</td><td style="vertical-align:top;">:</td><td><div><table><tr><td style="font-weight:bold;vertical-align:top;">2</td><td style="vertical-align:top;">:</td><td><div>session_lead</div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">5</td><td style="vertical-align:top;">:</td><td><div>administrator</div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">11</td><td style="vertical-align:top;">:</td><td><div>user_3</div></td></tr></table></div></td></tr></table></div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">flash</td><td style="vertical-align:top;">:</td><td><div>None</div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">last_orderby</td><td style="vertical-align:top;">:</td><td><div>None</div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">last_query</td><td style="vertical-align:top;">:</td><td><div>db.auth_user.id&gt;0</div></td></tr></table></div>'
+tRp199
+sS'etype'
+p200
+S"<class 'sqlite3.IntegrityError'>"
+p201
+sS'date'
+p202
+S'Sun Jul 12 18:22:42 2015'
+p203
+sS'response'
+p204
+g61
+(S's\xef\x17\x00\x00<div><table><tr><td style="font-weight:bold;vertical-align:top;">body</td><td style="vertical-align:top;">:</td><td><div>&lt;cStringIO.StringO object at 0x7f38effff1b8&gt;</div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">cookies</td><td style="vertical-align:top;">:</td><td><div><table><tr><td style="font-weight:bold;vertical-align:top;">session_id_medboard</td><td style="vertical-align:top;">:</td><td><div>86.180.54.34-160bac9c-ea12-49f0-a3c6-767ac17e9cf9<table><tr><td style="font-weight:bold;vertical-align:top;">comment</td><td style="vertical-align:top;">:</td><td><div></div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">domain</td><td style="vertical-align:top;">:</td><td><div></div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">expires</td><td style="vertical-align:top;">:</td><td><div></div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">httponly</td><td style="vertical-align:top;">:</td><td><div></div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">max-age</td><td style="vertical-align:top;">:</td><td><div></div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">path</td><td style="vertical-align:top;">:</td><td><div>/</div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">secure</td><td style="vertical-align:top;">:</td><td><div></div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">version</td><td style="vertical-align:top;">:</td><td><div></div></td></tr></table></div></td></tr></table></div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">delimiters</td><td style="vertical-align:top;">:</td><td><div><table><tr><td><div>{{</div></td></tr><tr><td><div>}}</div></td></tr></table></div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">files</td><td style="vertical-align:top;">:</td><td><div><table></table></div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">flash</td><td style="vertical-align:top;">:</td><td><div></div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">form_label_separator</td><td style="vertical-align:top;">:</td><td><div></div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">formstyle</td><td style="vertical-align:top;">:</td><td><div>bootstrap3_inline</div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">generic_patterns</td><td style="vertical-align:top;">:</td><td><div><table></table></div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">headers</td><td style="vertical-align:top;">:</td><td><div><table><tr><td style="font-weight:bold;vertical-align:top;">X-Powered-By</td><td style="vertical-align:top;">:</td><td><div>web2py</div></td></tr></table></div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">menu</td><td style="vertical-align:top;">:</td><td><div><table></table></div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">meta</td><td style="vertical-align:top;">:</td><td><div><table></table></div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">models_to_run</td><td style="vertical-align:top;">:</td><td><div><table><tr><td><div>^\\w+\\.py$</div></td></tr><tr><td><div>^appadmin/\\w+\\.py$</div></td></tr><tr><td><div>^appadmin/index/\\w+\\.py$</div></td></tr></table></div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">postprocessing</td><td style="vertical-align:top;">:</td><td><div><table></table></div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">session_client</td><td style="vertical-align:top;">:</td><td><div>86.180.54.34</div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">session_cookie_compression_level</td><td style="vertical-align:top;">:</td><td><div>None</div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">session_cookie_expires</td><td style="vertical-align:top;">:</td><td><div>None</div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">session_cookie_key</td><td style="vertical-align:top;">:</td><td><div>None</div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">session_data_name</td><td style="vertical-align:top;">:</td><td><div>session_data_medboard</div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">session_file</td><td style="vertical-align:top;">:</td><td><div>&lt;open file &#x27;/home/nhshd15/web2py/applications/medboard/sessions/0fa/08d/86.180.54.34-160bac9c-ea12-49f0-a3c6-767ac17e9cf9&#x27;, mode &#x27;rb+&#x27; at 0x7f38f4a2cdb0&gt;</div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">session_filename</td><td style="vertical-align:top;">:</td><td><div>/home/nhshd15/web2py/applications/medboard/sessions/86.180.54.34-160bac9c-ea12-49f0-a3c6-767ac17e9cf9</div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">session_hash</td><td style="vertical-align:top;">:</td><td><div>5c20058eb2833a6316bc90e20dcbed72</div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">session_id</td><td style="vertical-align:top;">:</td><td><div>86.180.54.34-160bac9c-ea12-49f0-a3c6-767ac17e9cf9</div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">session_id_name</td><td style="vertical-align:top;">:</td><td><div>session_id_medboard</div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">session_locked</td><td style="vertical-align:top;">:</td><td><div>True</div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">session_masterapp</td><td style="vertical-align:top;">:</td><td><div>medboard</div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">session_new</td><td style="vertical-align:top;">:</td><td><div>False</div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">session_storage_type</td><td style="vertical-align:top;">:</td><td><div>file</div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">status</td><td style="vertical-align:top;">:</td><td><div>200</div></td></tr><tr><td style="font-weight:bold;vertical-align:top;">view</td><td style="vertical-align:top;">:</td><td><div>appadmin/index.html</div></td></tr></table></div>'
+tRp205
+sS'locals'
+p206
+(dp207
+S'query'
+p208
+S"'INSERT INTO auth_membership(group_id,user_id) VALUES (5,3);'"
+p209
+sS'self'
+p210
+S'<pydal.adapters.sqlite.SQLiteAdapter object>'
+p211
+sS'e'
+S"IntegrityError('FOREIGN KEY constraint failed',)"
+p212
+sS'fields'
+p213
+S'[(<pydal.objects.Field object>, 5), (<pydal.objects.Field object>, 3L)]'
+p214
+sS'table'
+p215
+S'<Table auth_membership (id,user_id,group_id)>'
+p216
+sssS'traceback'
+p217
+S'Traceback (most recent call last):\n  File "/home/nhshd15/web2py/gluon/restricted.py", line 227, in restricted\n    exec ccode in environment\n  File "/home/nhshd15/web2py/applications/medboard/models/db1.py", line 113, in <module>\n    grant_new_access()\n  File "/home/nhshd15/web2py/applications/medboard/models/db1.py", line 111, in grant_new_access\n    auth.add_membership(5, user_id)\n  File "/home/nhshd15/web2py/gluon/tools.py", line 3573, in add_membership\n    id = membership.insert(group_id=group_id, user_id=user_id)\n  File "/home/nhshd15/web2py/gluon/packages/dal/pydal/objects.py", line 737, in insert\n    ret =  self._db._adapter.insert(self, self._listify(fields))\n  File "/home/nhshd15/web2py/gluon/packages/dal/pydal/adapters/base.py", line 727, in insert\n    raise e\nIntegrityError: FOREIGN KEY constraint failed\n'
+p218
+s.

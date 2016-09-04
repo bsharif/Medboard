@@ -1,11 +1,10 @@
 {{extend 'layout.html'}}
 <h1>Browse Sessions</h1>
-
 <div class="row">
 
   <div class="col-md-12">
            <h4>
-      Choose hospital:
+      Choose hospital: 
       </h4> <button type="button" class="btn btn-primary dropdown-toggle" data-toggle="dropdown" aria-expanded="false">
         {{=current_hospital}}<span class="caret"></span>
       </button>
@@ -13,9 +12,9 @@
 
         <li>{{=A('ALL',_href=URL('browse',args=['ALL']))}}</li>
         <li class="divider"></li>
-        {{for hospital in hospitals_list:}}
+        {{for key in hospitals_dict:}}
           <li>
-              {{=A(hospital,_href=URL('browse',args=[hospital]))}}
+              {{=A(hospitals_dict[key],_href=URL('browse',args=[key]))}}
 
           </li>
         {{pass}}

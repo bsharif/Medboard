@@ -35,7 +35,7 @@ def new_session():
     form = SQLFORM(db.sessions,
                    labels = {'duration':'Duration (minutes)'},
                    col3={'duration':'Please enter time in minutes'})
-
+    form.vars.session_lead = auth.user_id
     if form.process().accepted:
         response.flash = "Session Added"
         redirect(URL('my_sessions'))
@@ -56,9 +56,10 @@ def new_repeating_session():
            ((db.auth_membership.group_id == 2)|(db.auth_membership.group_id == 3)))
 
     basic_form = SQLFORM.factory(
-                Field('hospital','reference hospitals',requires=IS_IN_DB(db,'hospitals.id','%(hospital_name)s'),default=auth.user.default_hospital), #need to add a default option depending on users default hospital
+                Field('hospital','reference hospitals',requires=IS_IN_DB(db,'hospitals.id','%(hospital_name)s - %(block_name)s'),default=auth.user.default_hospital), #need to add a default option depending on users default hospital
                 Field('session_type','reference session_types',requires=IS_IN_DB(db,'session_types.id','%(session_type)s'),default='1'),    #added requires in set from SESSION_TYPES table - currently 4 types available
-                Field('session_lead','reference auth_user', default=auth.user_id, requires=IS_IN_DB(db(restrict_lead_query), db.auth_user.id, '%(first_name)s %(last_name)s (%(email)s)')),
+                Field('session_lead','reference auth_user', default=auth.user_id, requires=IS_IN_DB(db(restrict_lead_query), db.auth_user.id, '%(first_name)s %(last_name)s (%(email)s)'),readable=False,writable=False),
+                Field('session_lead_name','string',requires=IS_NOT_EMPTY()),
                 Field('title','string',requires=IS_NOT_EMPTY()),
                 Field('description','text'),
                 Field('session_location','string',requires=IS_NOT_EMPTY()),
@@ -74,6 +75,7 @@ def new_repeating_session():
         session.repeating_basic['hospital'] = basic_form.vars.hospital
         session.repeating_basic['session_type'] = basic_form.vars.session_type
         session.repeating_basic['session_lead'] = basic_form.vars.session_lead
+        session.repeating_basic['session_lead_name'] = basic_form.vars.session_lead_name
         session.repeating_basic['title'] = basic_form.vars.title
         session.repeating_basic['description'] = basic_form.vars.description
         session.repeating_basic['session_location'] = basic_form.vars.session_location
@@ -121,9 +123,10 @@ def new_repeating_session_dates():
                         hospital=session.repeating_basic['hospital'],
                         session_type=session.repeating_basic['session_type'],
                         session_lead=session.repeating_basic['session_lead'],
+                        session_lead_name=session.repeating_basic['session_lead_name'],
 #                         AUTH.SIG UPDATE> author=user_id,
                         title=session.repeating_basic['title'],
-                        description=session.repeating_basic['title'],
+                        description=session.repeating_basic['description'],
                         session_location=session.repeating_basic['session_location'],
                         start_datetime=session_date,
                         duration=session.repeating_basic['duration'],
@@ -145,8 +148,8 @@ def view_session():
         session.flash = "No session ID provided"
         redirect(request.env.http_referer)
     session_record = db(db.sessions.id==session_id).select().first()
-    display_fields =['hospital','session_type','session_lead','title','description','session_location','start_datetime','duration','max_attendees','attendee_ids']
-    display_labels = {'duration':'Durations (mins)','max_attendees':'Maximum Attendees','attendee_ids':'Currently attending'}
+    display_fields =['hospital','session_type','session_lead_name','title','description','session_location','start_datetime','duration','max_attendees','attendee_ids']
+    display_labels = {'duration':'Durations (mins)','max_attendees':'Maximum Attendees','attendee_ids':'Currently attending','session_lead_name':'Session Lead'}
 
     advanced_options=False
     if auth:
@@ -207,32 +210,34 @@ def browse():
 
     hospital_rows = db(db.hospitals).select()
     hospitals_list = []
+    hospitals_dict = {}
     for row in hospital_rows:
-        hospitals_list.append(row.hospital_code)
-
+        hospitals_list.append(row.hospital_code + " - " + row.block_name)
+        hospitals_dict[row.id] = row.hospital_code + " - " + row.block_name
+    
     selected_hospital = request.args(0)
     if (not selected_hospital) and (auth.user):
         selected_hospital = auth.user.default_hospital
         db_selection = (db.sessions.session_active==True)&(db.sessions.hospital==selected_hospital)
         current_hospital = get_default_hospital(selected_hospital)
-        current_hospital = current_hospital['hospital_code']
-        display_fields = (db.sessions.session_type,db.sessions.title,db.sessions.start_datetime,db.sessions.session_lead,db.sessions.session_full,db.sessions.current_attendees,db.sessions.attendee_ids)
+        current_hospital = current_hospital['hospital_code'] + " - " + current_hospital['block_name']
+        display_fields = (db.sessions.session_type,db.sessions.title,db.sessions.start_datetime,db.sessions.session_lead_name,db.sessions.session_full,db.sessions.current_attendees,db.sessions.attendee_ids)
     elif (not selected_hospital) and (not auth.user):
         selected_hospital = 'ALL'
         db_selection = db.sessions.session_active==True
         current_hospital = 'ALL'
-        display_fields = (db.sessions.hospital,db.sessions.session_type,db.sessions.title,db.sessions.start_datetime,db.sessions.session_lead,db.sessions.session_full,db.sessions.current_attendees,db.sessions.attendee_ids)
+        display_fields = (db.sessions.hospital,db.sessions.session_type,db.sessions.title,db.sessions.start_datetime,db.sessions.session_lead_name,db.sessions.session_full,db.sessions.current_attendees,db.sessions.attendee_ids)
     elif selected_hospital == 'ALL':
         db_selection = db.sessions.session_active==True
-        display_fields = (db.sessions.hospital,db.sessions.session_type,db.sessions.title,db.sessions.start_datetime,db.sessions.session_lead,db.sessions.session_full,db.sessions.current_attendees,db.sessions.attendee_ids)
+        display_fields = (db.sessions.hospital,db.sessions.session_type,db.sessions.title,db.sessions.start_datetime,db.sessions.session_lead_name,db.sessions.session_full,db.sessions.current_attendees,db.sessions.attendee_ids)
         current_hospital = 'ALL'
     else:
-        hosp_id = db(db.hospitals.hospital_code==selected_hospital).select().first()
+        hosp_id = db(db.hospitals.id==selected_hospital).select().first()
         selected_hospital = hosp_id.id
         db_selection = (db.sessions.session_active==True)&(db.sessions.hospital==selected_hospital)
         current_hospital = get_default_hospital(selected_hospital)
-        current_hospital = current_hospital['hospital_code']
-        display_fields = (db.sessions.session_type,db.sessions.title,db.sessions.start_datetime,db.sessions.session_lead,db.sessions.session_full,db.sessions.current_attendees,db.sessions.attendee_ids)
+        current_hospital = current_hospital['hospital_code'] + " - " + current_hospital['block_name']
+        display_fields = (db.sessions.session_type,db.sessions.title,db.sessions.start_datetime,db.sessions.session_lead_name,db.sessions.session_full,db.sessions.current_attendees,db.sessions.attendee_ids)
 
     def status_label(row):
         session_record = db(db.sessions.id==row.id).select().first()
@@ -270,7 +275,7 @@ def browse():
                         sortable=False,
                         csv=False,
                         user_signature=False,
-                        maxtextlengths={'sessions.hospital':50},
+                        maxtextlengths={'sessions.hospital':50,'sessions.title':50},
                         links=[dict(header="Status",body=lambda row: status_label(row)),
                                dict(header="Details",body=lambda row: A('View',_class="btn btn-default",_href=URL('view_session',vars={"s_id":row.id}))),
                                dict(header="Sign Up",body=lambda row: sign_up_button(row))],
@@ -361,18 +366,19 @@ def quit_session():
     if not session_id:
         session.flash = "No session ID provided"
         redirect(request.env.http_referer)
-
-    if session_record.repeating:
-        redirect(URL('quit_repeating_session',vars={"s_id":session_id}))
+    
+    #disabled leave repeaeting session
+#     if session_record.repeating:
+#         redirect(URL('quit_repeating_session',vars={"s_id":session_id}))
+#     else:
+    removal_status = remove_from_session(session_id, user_id)
+    if removal_status == "Removed":
+        session.flash = "You have been removed from the session"
+    elif removal_status == "NotInList":
+        session.flash = "You are not listed as being signed up to this session."
     else:
-        removal_status = remove_from_session(session_id, user_id)
-        if removal_status == "Removed":
-            session.flash = "You have been removed from the session"
-        elif removal_status == "NotInList":
-            session.flash = "You are not listed as being signed up to this session."
-        else:
-            session.flash = "Error. You have not been removed from the session"
-        redirect(URL('my_sessions'))
+        session.flash = "Error. You have not been removed from the session"
+    redirect(URL('my_sessions'))
 
     return locals()
 
@@ -390,7 +396,6 @@ def quit_repeating_session():
     display_fields = (db.sessions.title,db.sessions.start_datetime)
     field_headers = {'sessions.start_datetime':"Start Date and Time"}
     #get any other records with same UUID and display in grid
-
     grid = SQLFORM.grid((db.sessions.attendee_ids.contains(user_id))&(db.sessions.uuid==session_record.uuid),
                         selectable = lambda ids : redirect(URL('default', 'remove_from_repeating', vars=dict(s_id=ids))),
                         fields=display_fields,
@@ -401,6 +406,7 @@ def quit_repeating_session():
                         deletable=False,
                         csv=False,
                        details=False)
+    
     return locals()
 
 @auth.requires_login()
@@ -514,10 +520,10 @@ def my_sessions():
     user_id = auth.user_id
     default_sort=[db.sessions.start_datetime]
 #     display_fields = (db.sessions.hospital,db.sessions.session_type,db.sessions.session_lead,db.sessions.title,db.sessions.start_datetime)
-    display_fields_upcoming = (db.sessions.hospital,db.sessions.session_type,db.sessions.title,db.sessions.start_datetime,db.sessions.session_lead)
-    display_fields_previous = (db.sessions.hospital,db.sessions.session_type,db.sessions.title,db.sessions.start_datetime,db.sessions.session_lead)
-    display_fields_lead = (db.sessions.hospital,db.sessions.session_type,db.sessions.title,db.sessions.start_datetime,db.sessions.session_lead,db.sessions.session_active)
-    display_fields_authored = (db.sessions.hospital,db.sessions.session_type,db.sessions.title,db.sessions.start_datetime,db.sessions.session_lead,db.sessions.session_active)
+    display_fields_upcoming = (db.sessions.hospital,db.sessions.session_type,db.sessions.title,db.sessions.start_datetime,db.sessions.session_lead_name)
+    display_fields_previous = (db.sessions.hospital,db.sessions.session_type,db.sessions.title,db.sessions.start_datetime,db.sessions.session_lead_name)
+    display_fields_lead = (db.sessions.hospital,db.sessions.session_type,db.sessions.title,db.sessions.start_datetime,db.sessions.session_lead_name,db.sessions.session_active)
+    display_fields_authored = (db.sessions.hospital,db.sessions.session_type,db.sessions.title,db.sessions.start_datetime,db.sessions.session_lead_name,db.sessions.session_active)
     field_headers = {'sessions.start_datetime':"Start Date and Time"}
 
     #custom links in extra columns
@@ -679,11 +685,11 @@ def admin_page():
 
     if requested_page=="hospitals":
         query = db.hospitals
-        display_fields = (db.hospitals.hospital_name,db.hospitals.hospital_code)
+        display_fields = (db.hospitals.hospital_name,db.hospitals.hospital_code,db.hospitals.block_name)
         additional_links = None
     elif requested_page=="sessions":
         query = db.sessions
-        display_fields = (db.sessions.hospital,db.sessions.session_type,db.sessions.title,db.sessions.start_datetime,db.sessions.session_lead,db.sessions.session_full,db.sessions.current_attendees)
+        display_fields = (db.sessions.hospital,db.sessions.session_type,db.sessions.title,db.sessions.start_datetime,db.sessions.session_lead_name,db.sessions.session_full,db.sessions.current_attendees)
         additional_links = None
     elif requested_page=="session_types":
         query = db.session_types
@@ -697,7 +703,7 @@ def admin_page():
 
     elif requested_page=="print_reports":
         query = db.sessions
-        display_fields = (db.sessions.hospital,db.sessions.session_type,db.sessions.title,db.sessions.start_datetime,db.sessions.session_lead,db.sessions.session_full,db.sessions.current_attendees)
+        display_fields = (db.sessions.hospital,db.sessions.session_type,db.sessions.title,db.sessions.start_datetime,db.sessions.session_lead_name,db.sessions.session_full,db.sessions.current_attendees)
         additional_links = [dict(header="Print Report",body=lambda row: A('Print Report',_class="btn btn-info",_href=URL('print_session_report',vars={"s_id":row.id})))]
     elif requested_page=="users":
         query = db.auth_user
@@ -710,7 +716,7 @@ def admin_page():
                         deletable=False,
                         details=True,
                         paginate=999,
-                        sortable=False,
+                        sortable=True,
                         csv=False,
                         user_signature=False,
                         maxtextlength=30,
@@ -768,7 +774,7 @@ def get_default_hospital(hosp_id):
     row = db.hospitals[hosp_id]
 #     the above line does the same as this line below but is far shorter
 #     row = db(db.hospitals.id==hosp_id).select().first()
-    users_hospital = {"hospital_name":row.hospital_name,"hospital_code":row.hospital_code}
+    users_hospital = {"hospital_name":row.hospital_name,"hospital_code":row.hospital_code,"block_name":row.block_name}
     return users_hospital
 
 def export_as_pdf():
@@ -810,7 +816,7 @@ def get_type_by_id(session_type_id):
 
 def get_hospital_by_id(hospital_id):
     hospital_record = db(db.hospitals.id==hospital_id).select().first()
-    hospital_name = str(hospital_record.hospital_name)
+    hospital_name = str(hospital_record.hospital_name + " - " + hospital_record.block_name)
     return hospital_name
 
 def failed_auth():
@@ -886,7 +892,7 @@ def print_session_report():
     heading = "Session Details"
     story.append(Paragraph(escape(heading),styles["Heading2"]))
 
-    session_lead = "Session Lead: " + get_name_by_id(session_record.session_lead)
+    session_lead = "Session Lead: " + session_record.session_lead_name
     story.append(Paragraph(escape(session_lead),styles["Heading4"]))
 
     session_type = "Session Type: " + get_type_by_id(session_record.session_type)
@@ -1021,7 +1027,7 @@ def print_user_report():
 
         for session in sessions_attended:
             if session.session_type == session_type:
-                session_detail = session.title + " / " + session.session_location + " / " + str(session.start_datetime.strftime('%d-%m-%Y %H:%M')) + " / " + str(session.duration) + "mins / " + get_name_by_id(session.session_lead)
+                session_detail = session.title + " / " + session.session_location + " / " + str(session.start_datetime.strftime('%d-%m-%Y %H:%M')) + " / " + str(session.duration) + "mins / " + get_name_by_id(session.session_lead_name)
                 story.append(Paragraph(escape(session_detail),styles["Normal"]))
         story.append(Spacer(1,0.1*inch))
 
