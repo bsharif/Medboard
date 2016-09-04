@@ -1,0 +1,97 @@
+{{extend 'layout.html'}}
+<h1>Get Started - Instructions</h1>
+
+<p>
+    This page is a quick overview of how Medboard works.
+</p>
+<p>
+    There are 2 parts to Medboard:
+</p>
+{{=IMG(_src=URL('static','images/menu_bar.png'))}}
+<ul>
+    
+<li>
+    Browse – this is where you can see what teaching sessions are available and sign up
+</li>
+<li>
+    My Sessions – this is where you can see what sessions you have registered to attend
+</li>
+</ul>
+<h3>
+    Using the site
+</h3>
+<p>
+    To access the site go to: <a href="http://medboard.co.uk">http://medboard.co.uk</a>
+</p>
+<p>
+    You can access it on any device with a web browser and it should format itself to fit on any screen (eg your smartphones)
+</p>
+<p>
+    To make best use of the site you need to register. You can do this {{=A('here',_href=URL('user',args=['register']))}}
+</p>
+<p>
+    When registering please complete all the boxes except the Access Key.
+</p>
+<p>
+    The Default Hospital box should be completed to match your placement block.
+</p>
+<p>
+    For example, if you are starting Oncology at the Royal Glamorgan hospital select “RGL – Oncology”.
+</p>
+<p>
+    Abbreviations are occasionally used for hospital names.
+</p>
+<ul>
+    <li>
+    RGL – Royal Glamorgan
+</li>
+<li>
+    PCH – Prince Charles
+</li>
+</ul>
+<h3>
+    Browse
+</h3>
+<p>
+    Once you are registered go to {{=A('Browse',_href=URL('browse'))}} to see what sessions are available.
+</p>
+<p>
+    You will be shown the sessions related to your block by default if you are logged in.
+</p>
+<p>
+    The dropdown box will let you change the view to see other blocks if you want.
+</p>
+{{=IMG(_src=URL('static','images/hospital_dropdown.png'))}}
+<p>
+    In the table you will see a different session list on each row.
+</p>
+{{=IMG(_src=URL('static','images/browse.png'))}}
+<p>
+    By default, 10 sessions will be shown on each page, but you can change that using the dropdown. To search for something specific, use the search box.
+</p>
+<p>
+    Each session has the following attributes:
+</p>
+<ul>
+<li>Session Type – This is either Clinic, MDT, Theatre, Teaching Session or Allied Health Professionals</li>
+<li>Title – This is the name of the session</li>
+<li>Start Date and Time</li>
+<li>Session Lead Name</li>
+<li>Status – Shows you how many space are available in the session</li>
+<li>View Button – this takes you to a page showing a few more details for that session</li>
+<li>Sign Up Button – clicking this will add your name to the session</li>
+</ul>
+    
+<h3>
+    My Sessions
+</h3>
+<p>
+    This can be found {{=A('here',_href=URL('my_sessions'))}}
+</p>
+<p>
+    It will let show you 2 tables<ul>
+<li>Upcoming Sessions – these are sessions in the future that you have signed up to</li>
+<li>....If you can no longer go to a session you can click Leave Session</li>
+<li>Previous Sessions – these are sessions that you signed up to that are in the past</li>
+<li>....The feedback button here will let you leave comments on the session</li>
+</ul>

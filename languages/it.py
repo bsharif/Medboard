@@ -1,4 +1,4 @@
-# coding: utf8
+# -*- coding: utf-8 -*-
 {
 '!=': '!=',
 '!langcode!': 'it',
@@ -6,6 +6,7 @@
 '"update" is an optional expression like "field1=\'newvalue\'". You cannot update or delete the results of a JOIN': '"update" è un\'espressione opzionale come "campo1=\'nuovo valore\'". Non si può fare "update" o "delete" dei risultati di un JOIN ',
 '%(nrows)s records found': '%(nrows)s record trovati',
 '%d seconds ago': '%d secondi fa',
+'%d-%m-%y %H:%M': '%d-%m-%y %H:%M',
 '%s %%{row} deleted': '%s righe ("record") cancellate',
 '%s %%{row} updated': '%s righe ("record") modificate',
 '%s selected': '%s selezionato',
@@ -84,6 +85,8 @@
 'Email and SMS': 'Email e SMS',
 'Email non valida': 'Email non valida',
 'enter a number between %(min)g and %(max)g': 'enter a number between %(min)g and %(max)g',
+'Enter a time between 5 and 500 minutes': 'Enter a time between 5 and 500 minutes',
+'Enter an integer between %(min)g and %(max)g': 'Enter an integer between %(min)g and %(max)g',
 'enter an integer between %(min)g and %(max)g': 'inserisci un intero tra %(min)g e %(max)g',
 'Errors': 'Errori',
 'Errors in form, please check it out.': 'Errori nel form, ricontrollalo',

@@ -177,3 +177,6 @@ success!
 timestamp: 2015-09-02T12:58:33.987786
 ALTER TABLE sessions ADD session_lead_name CHAR(512);
 success!
+timestamp: 2016-01-23T11:48:34.177496
+ALTER TABLE sessions ADD session_lead_email CHAR(512);
+success!

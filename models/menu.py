@@ -35,10 +35,10 @@ if auth.has_membership('hospital') or auth.has_membership('undergrad') or auth.h
     (T('New Single Session'), False, URL('default', 'new_session'), []),
     (T('New Repeating Session'), False, URL('default', 'new_repeating_session'), [])    
     ]
-elif auth.user_id:
-        response.menu += [
-    (T('Upgrade Access Level'), False, URL('default', 'access_key'), []) 
-        ]
+# elif auth.user_id:
+#         response.menu += [
+#     (T('Upgrade Access Level'), False, URL('default', 'access_key'), []) 
+#         ]
     
 if auth.has_membership('hospital') or auth.has_membership('undergrad') or auth.has_membership('administrator'):
     response.menu += [

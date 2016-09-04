@@ -66,6 +66,8 @@ db.define_table('hospitals',
                 format = '%(hospital_code)s - %(block_name)s')  #this format string allows us to decide what details of the records to display when referencing this table from elsewhere (eg. on the user sign up form)
 
 
+
+
 #***************************************************************
 #DEFINE A DATABASE OF ACCESS KEYS THAT CAN BE USED TO AUTOMATICALLY GIVE HIGHER LEVEL PERMISSIONS
 db.define_table('access_keys',
@@ -102,6 +104,13 @@ mail.settings.login = 'medboard.mail@gmail.com:nhs15hack!'      # your credentia
 auth.settings.registration_requires_verification = False
 auth.settings.registration_requires_approval = False
 auth.settings.reset_password_requires_verification = True
+
+#enable CAPTCHA
+
+# from gluon.tools import Recaptcha
+# auth.settings.captcha = Recaptcha(request,
+#     '6Ldhpw0TAAAAACMxcEI_CFtpB2IF7GKgbZYldXcO', '6Ldhpw0TAAAAAMB5p37qeEyf7vv30RGEW77naQAQ ')
+# auth.settings.login_captcha = True
 
 #>>>>>>>>>>custom failed auth page
 auth.settings.on_failed_authorization =     URL('failed_auth')

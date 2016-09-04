@@ -11,8 +11,9 @@ from reportlab.lib import colors
 from uuid import uuid4
 from cgi import escape
 import os
-#*****************************
+#*************
 import datetime
+import requests
 ##############################
 
 def index():
@@ -20,12 +21,12 @@ def index():
     return locals()
 
 def test():
-    #this is just for testing purposes
-    #remove in production
-#     test_number = request.vars.s_id
 
     return locals()
 
+def get_started():
+
+    return locals()
 
 @auth.requires(lambda: auth.has_membership('session_lead') or auth.has_membership('undergrad'))
 def new_session():
@@ -37,7 +38,7 @@ def new_session():
     form = SQLFORM(db.sessions,
                    labels = {'duration':'Duration (minutes)'},
                    col3={'duration':'Please enter time in minutes'})
-
+    form.vars.session_lead = auth.user_id
     if form.process().accepted:
         response.flash = "Session Added"
         redirect(URL('my_sessions'))
@@ -57,16 +58,37 @@ def new_repeating_session():
     restrict_lead_query = ((db.auth_user.id == db.auth_membership.user_id)&
            ((db.auth_membership.group_id == 2)|(db.auth_membership.group_id == 3)))
 
+    #if a duplicate s_id is passed then get that records details
+    duplicate_request = False
+    dup_fields = ['hospital','session_type','session_lead_name','session_lead_email','title','description','session_location','duration','max_attendees']
+    dup_dict = dict.fromkeys(dup_fields,"")
+    if request.vars.s_id:
+        duplicate_request=True
+        dup_record = db(db.sessions.id==request.vars.s_id).select().first()
+        for i in dup_fields:
+            field_name = i
+            field_value = dup_record[field_name]
+            if not field_value: field_value = ""
+            dup_dict[field_name]=field_value
+
+    if duplicate_request:
+        if dup_dict['session_lead_email'] == "":
+            session.flash = "Details loaded. No lead email available"
+        else:
+            session.flash = "Details loaded.
+            
+
     basic_form = SQLFORM.factory(
-                Field('hospital','reference hospitals',requires=IS_IN_DB(db,'hospitals.id','%(hospital_name)s'),default=auth.user.default_hospital), #need to add a default option depending on users default hospital
-                Field('session_type','reference session_types',requires=IS_IN_DB(db,'session_types.id','%(session_type)s'),default='1'),    #added requires in set from SESSION_TYPES table - currently 4 types available
-                Field('session_lead','reference auth_user', default=auth.user_id, requires=IS_IN_DB(db(restrict_lead_query), db.auth_user.id, '%(first_name)s %(last_name)s (%(email)s)')),
-#                 AUTH.SIG UPDATE> Field('author','reference auth_user', requires=IS_IN_DB(db,'auth_user.id','%(first_name)s %(last_name)s'),default=auth.user_id,readable=False,writable=False),
-                Field('title','string',requires=IS_NOT_EMPTY()),
-                Field('description','text'),
-                Field('session_location','string',requires=IS_NOT_EMPTY()),
-                Field('duration','integer',requires=IS_NOT_EMPTY()),
-                Field('max_attendees','integer',requires=IS_NOT_EMPTY()),
+                Field('hospital','reference hospitals',requires=IS_IN_DB(db,'hospitals.id','%(hospital_name)s - %(block_name)s'),default=dup_dict['hospital']), #need to add a default option depending on users default hospital
+                Field('session_type','reference session_types',requires=IS_IN_DB(db,'session_types.id','%(session_type)s'),default=dup_dict['session_type']),    #added requires in set from SESSION_TYPES table - currently 4 types available
+                Field('session_lead','reference auth_user', default=auth.user_id, requires=IS_IN_DB(db(restrict_lead_query), db.auth_user.id, '%(first_name)s %(last_name)s (%(email)s)'),readable=False,writable=False),
+                Field('session_lead_name','string',requires=IS_NOT_EMPTY(),default=dup_dict['session_lead_name']),
+                Field('session_lead_email','string',default=dup_dict['session_lead_email']),
+                Field('title','string',requires=IS_NOT_EMPTY(),default=dup_dict['title']),
+                Field('description','text',default=dup_dict['description']),
+                Field('session_location','string',requires=IS_NOT_EMPTY(),default=dup_dict['session_location']),
+                Field('duration','integer',requires=IS_NOT_EMPTY(),default=dup_dict['duration']),
+                Field('max_attendees','integer',requires=IS_NOT_EMPTY(),default=dup_dict['max_attendees']),
                 Field('number_of_sessions','integer',requires=IS_NOT_EMPTY()),
                 labels = {'duration':'Duration (minutes)'},
                 submit_button='Next')
@@ -77,6 +99,8 @@ def new_repeating_session():
         session.repeating_basic['hospital'] = basic_form.vars.hospital
         session.repeating_basic['session_type'] = basic_form.vars.session_type
         session.repeating_basic['session_lead'] = basic_form.vars.session_lead
+        session.repeating_basic['session_lead_name'] = basic_form.vars.session_lead_name
+        session.repeating_basic['session_lead_email'] = basic_form.vars.session_lead_email
         session.repeating_basic['title'] = basic_form.vars.title
         session.repeating_basic['description'] = basic_form.vars.description
         session.repeating_basic['session_location'] = basic_form.vars.session_location
@@ -84,18 +108,13 @@ def new_repeating_session():
         session.repeating_basic['max_attendees'] = basic_form.vars.max_attendees
         session.repeating_basic['number_of_sessions'] = basic_form.vars.number_of_sessions
 
-#         session.dates = {}
-#         for i in range(1,session.repeating_basic['number_of_sessions']+1):
-#             key_name = "Session "+str(i)
-#             session.dates[key_name] = ''
+
         redirect(URL('new_repeating_session_dates',vars={'num':basic_form.vars.number_of_sessions}))
 
-#         session.basic
-#     onkeyup="ajax('add_boxes', ['boxes_needed'], 'new_boxes')"
-#     number = int(requires.vars.number_of_session)
+
 
     return locals()
-
+@auth.requires_login()
 def new_repeating_session_dates():
     import uuid
     user_id = int(auth.user_id)
@@ -129,9 +148,10 @@ def new_repeating_session_dates():
                         hospital=session.repeating_basic['hospital'],
                         session_type=session.repeating_basic['session_type'],
                         session_lead=session.repeating_basic['session_lead'],
-#                         AUTH.SIG UPDATE> author=user_id,
+                        session_lead_name=session.repeating_basic['session_lead_name'],
+                        session_lead_email=session.repeating_basic['session_lead_email'],
                         title=session.repeating_basic['title'],
-                        description=session.repeating_basic['title'],
+                        description=session.repeating_basic['description'],
                         session_location=session.repeating_basic['session_location'],
                         start_datetime=session_date,
                         duration=session.repeating_basic['duration'],
@@ -146,21 +166,22 @@ def new_repeating_session_dates():
         redirect(URL('my_sessions'))
     return locals()
 
+# @auth.requires_login()
 def view_session():
     session_id = request.vars.s_id
     if not session_id:
         session.flash = "No session ID provided"
         redirect(request.env.http_referer)
     session_record = db(db.sessions.id==session_id).select().first()
-    display_fields =['hospital','session_type','session_lead','title','description','session_location','start_datetime','duration','max_attendees','attendee_ids']
-    display_labels = {'duration':'Durations (mins)','max_attendees':'Maximum Attendees','attendee_ids':'Currently attending'}
-    
+    display_fields =['hospital','session_type','session_lead_name','title','description','session_location','start_datetime','duration','max_attendees','attendee_ids']
+    display_labels = {'duration':'Durations (mins)','max_attendees':'Maximum Attendees','attendee_ids':'Currently attending','session_lead_name':'Session Lead'}
+
     advanced_options=False
     if auth:
         user_id = auth.user_id
         if (session_record.session_lead==user_id)or(session_record.created_by==user_id):
             advanced_options=True
-    
+
     form=SQLFORM(db.sessions, session_record,
                  readonly=True,
                  fields=display_fields,
@@ -172,7 +193,7 @@ def view_session():
         redirect(URL('my_sessions'))
     return locals()
 
-
+@auth.requires_login()
 def edit_session():
     #edit a session
     #limited to members of undergrad or session_leads or authors
@@ -190,7 +211,7 @@ def edit_session():
 
     #check that the user trying to make a change is either owner/author of session
     #TODO maybe allow anyone with admisntrative/undergrad access to edit any session?
-    if (user_id != session_record.created_by) or (user_id != session_record.session_lead):
+    if (user_id != session_record.created_by) and (user_id != session_record.session_lead):
         session.flash = "Error - you do not have permission to edit this session!"
         redirect(request.env.http_referer)
 
@@ -198,73 +219,77 @@ def edit_session():
     if form.process().accepted:
             for user_id in session_record.attendee_ids:
                 #TODO test email function on 'modified_by'
-                email_updates = send_email(user_id, "Medboard: Session Updated", session_id, "Session Updated")
-            session.flash = email_updates
+                #email_updates = send_email(user_id, "Medboard: Session Updated", session_id, "Session Details Updated")
+                pass
+            session.flash = "Session Updated"
             redirect(URL('my_sessions'))
     return locals()
 
 def browse():
-
     #visible by anyone
     #lists ongoing sessions - default is ALL unless logged in in which case default is auth_user.default_hospital
     #view should filter and sort etc.
     if auth.user:
+
         default_hospital = get_default_hospital(auth.user.default_hospital)
         display_name = default_hospital['hospital_name']
 
     hospital_rows = db(db.hospitals).select()
     hospitals_list = []
+    hospitals_dict = {}
     for row in hospital_rows:
-        hospitals_list.append(row.hospital_code)
+        hospitals_list.append(row.hospital_code + " - " + row.block_name)
+        hospitals_dict[row.id] = row.hospital_code + " - " + row.block_name
 
     selected_hospital = request.args(0)
     if (not selected_hospital) and (auth.user):
         selected_hospital = auth.user.default_hospital
         db_selection = (db.sessions.session_active==True)&(db.sessions.hospital==selected_hospital)
         current_hospital = get_default_hospital(selected_hospital)
-        current_hospital = current_hospital['hospital_code']
-        display_fields = (db.sessions.session_type,db.sessions.title,db.sessions.start_datetime,db.sessions.session_lead,db.sessions.session_full,db.sessions.current_attendees)
+        current_hospital = current_hospital['hospital_code'] + " - " + current_hospital['block_name']
+        display_fields = (db.sessions.session_type,db.sessions.title,db.sessions.start_datetime,db.sessions.session_lead_name,db.sessions.session_full,db.sessions.current_attendees,db.sessions.attendee_ids)
     elif (not selected_hospital) and (not auth.user):
         selected_hospital = 'ALL'
         db_selection = db.sessions.session_active==True
         current_hospital = 'ALL'
-        display_fields = (db.sessions.hospital,db.sessions.session_type,db.sessions.title,db.sessions.start_datetime,db.sessions.session_lead,db.sessions.session_full,db.sessions.current_attendees)
+        display_fields = (db.sessions.hospital,db.sessions.session_type,db.sessions.title,db.sessions.start_datetime,db.sessions.session_lead_name,db.sessions.session_full,db.sessions.current_attendees,db.sessions.attendee_ids)
     elif selected_hospital == 'ALL':
         db_selection = db.sessions.session_active==True
-        display_fields = (db.sessions.hospital,db.sessions.session_type,db.sessions.title,db.sessions.start_datetime,db.sessions.session_lead,db.sessions.session_full,db.sessions.current_attendees)
+        display_fields = (db.sessions.hospital,db.sessions.session_type,db.sessions.title,db.sessions.start_datetime,db.sessions.session_lead_name,db.sessions.session_full,db.sessions.current_attendees,db.sessions.attendee_ids)
         current_hospital = 'ALL'
     else:
-        hosp_id = db(db.hospitals.hospital_code==selected_hospital).select().first()
+        hosp_id = db(db.hospitals.id==selected_hospital).select().first()
         selected_hospital = hosp_id.id
         db_selection = (db.sessions.session_active==True)&(db.sessions.hospital==selected_hospital)
         current_hospital = get_default_hospital(selected_hospital)
-        current_hospital = current_hospital['hospital_code']
-        display_fields = (db.sessions.session_type,db.sessions.title,db.sessions.start_datetime,db.sessions.session_lead,db.sessions.session_full,db.sessions.current_attendees)
+        current_hospital = current_hospital['hospital_code'] + " - " + current_hospital['block_name']
+        display_fields = (db.sessions.session_type,db.sessions.title,db.sessions.start_datetime,db.sessions.session_lead_name,db.sessions.session_full,db.sessions.current_attendees,db.sessions.attendee_ids)
 
     def status_label(row):
         session_record = db(db.sessions.id==row.id).select().first()
         if session_record.session_full == True:
-            return SPAN('FULL',_class="label label-danger") 
+            return SPAN('FULL',_class="label label-danger")
         elif session_record.session_full == False:
             if session_record.current_attendees == None:
                 current_attendees = 0
             else:
                 current_attendees = session_record.current_attendees
             spaces_available = session_record.max_attendees - current_attendees
-            returned_label = SPAN(SPAN('Spaces available',_class="label label-success"),SPAN(' '),SPAN(spaces_available,_class="badge"))
+            returned_label = SPAN(SPAN('Spaces available',_class="label label-success"),SPAN(' '),SPAN(str(spaces_available)+" / "+str(session_record.max_attendees),_class="badge"))
             return returned_label
-        
+
     def sign_up_button(row):
-        current_attendees = row.current_attendees
+        attendee_ids = row.attendee_ids
+
         if auth.user:
             user_id = auth.user_id
-            if user_id in current_attendees:
+            if user_id in attendee_ids:
                 return DIV('Attending',_class="label label-success")
             else:
                 return A('Sign Up',_class="btn btn-primary",_href=URL('sign_up',vars={"s_id":row.id}))
         else:
             return A('Sign Up',_class="btn btn-primary",_href=URL('sign_up',vars={"s_id":row.id}))
-        
+
     grid = SQLFORM.grid(db_selection,
                         fields=display_fields,
                         searchable=False,
@@ -276,16 +301,62 @@ def browse():
                         sortable=False,
                         csv=False,
                         user_signature=False,
-                        maxtextlengths={'sessions.hospital':50},
+                        maxtextlengths={'sessions.hospital':50,'sessions.title':50},
                         links=[dict(header="Status",body=lambda row: status_label(row)),
                                dict(header="Details",body=lambda row: A('View',_class="btn btn-default",_href=URL('view_session',vars={"s_id":row.id}))),
-                               dict(header="Sign Up",body=lambda row: A('Sign Up',_class="btn btn-primary",_href=URL('sign_up',vars={"s_id":row.id})))],
+                               dict(header="Sign Up",body=lambda row: sign_up_button(row))],
                        headers={'sessions.start_datetime':"Start Date and Time",'sessions.duration':'Duration (mins)'}
                        )
 
     if grid.element('table'): grid.element('table')['_id'] = 'data_table' #giving an id to the grid container for datatables JS to know what to target
 
     return locals()
+
+
+def send_email(session_id):
+    # session_id = 37
+    user_record = db(db.auth_user.id==auth.user_id).select().first()
+    session_record = db(db.sessions.id==session_id).select().first()
+
+    session_lead_name = session_record.session_lead_name
+    session_lead_email_address = session_record.session_lead_email
+    trainee_name = user_record.first_name + " " + user_record.last_name
+    trainee_email = user_record.email
+    email_subject = "Medboard - Signup Notification"
+    email_html ="<html><h1>Medboard.co.uk</h1> <p>Dear " + session_lead_name +",</p><p>This is an notification email from Medboard.</p><hr> \
+                    <p>A student has signed up to attend one of your sessions. Details below:</p>  \
+                    <p>Session Title: " + str(session_record.title) + \
+                    "</p> <p>Session Date and Time: " + str(session_record.start_datetime.strftime('%d-%m-%Y %H:%M')) + \
+                    "</p> <p>Session Location: " + str(session_record.session_location) + \
+                    "</p> <p>Student Name: " + str(trainee_name) + \
+                    "</p> <p>Student Email: " + str(trainee_email) + \
+                    "</p> <p><a href='https://nhshd15.pythonanywhere.com/medboard/default/view_session?s_id="+\
+                    str(session_id)+"'>Click here</a> to view this session's details online</p>" \
+                    "<p>NOTE: If for any reason this clinic is cancelled or you need to contact the student then you can reply to this message to contact the student directly.</p> \
+                    <p>Thanks,</p> <p>Medboard </p></html>"
+
+    sent_email = 999
+    send_email = requests.post(
+        "https://api.sendgrid.com/api/mail.send.json",
+#             auth=("api", "key-bb2f721881bfc7b739162a54a291f281"),
+            data={
+            "api_user":"bsharif",
+            "api_key":"weRcon123",
+            "to": session_lead_email_address,
+            "toname":session_lead_name,
+            "subject": email_subject,
+            "html": email_html,
+            "from": "Medboard.co.uk <medboard.mail@gmail.com>",
+            "cc":'medboard.mail@gmail.com',
+            "replyto": trainee_email
+                  }
+    )
+
+    if send_email.status_code == 200:
+        sent_email = send_email.status_code
+
+    return sent_email
+
 @auth.requires_login()
 def sign_up():
     session_id = request.vars.s_id
@@ -326,10 +397,18 @@ def sign_up():
         if number_of_attendees == session_record.max_attendees:
             session_record.update_record(session_full=True)
 
-        session.flash = "Thanks for signing up"
+        #send a signup email to session owner
+        email_result = send_email(session_id)
+        if email_result:
+            session.flash = "Success"
+        else:
+            session.flash = "Fail"
+        #session.flash = "Thanks for signing up!"
         redirect(URL('my_sessions'))
     return locals()
 
+
+@auth.requires_login()
 def remove_from_session(session_id, user_id):
 
     #GET THE CURRENT RECORD, ATTENDEE LIST AND NUMBER OF ATTENDEES
@@ -355,6 +434,8 @@ def remove_from_session(session_id, user_id):
         session_record.update_record(attendee_ids=attendee_list)
         removal_status = "Removed"
     return removal_status
+
+@auth.requires_login()
 def quit_session():
     #GET VARS
     session_id = request.vars.s_id
@@ -364,21 +445,22 @@ def quit_session():
         session.flash = "No session ID provided"
         redirect(request.env.http_referer)
 
-    if session_record.repeating:
-        redirect(URL('quit_repeating_session',vars={"s_id":session_id}))
+    #disabled leave repeaeting session
+#     if session_record.repeating:
+#         redirect(URL('quit_repeating_session',vars={"s_id":session_id}))
+#     else:
+    removal_status = remove_from_session(session_id, user_id)
+    if removal_status == "Removed":
+        session.flash = "You have been removed from the session"
+    elif removal_status == "NotInList":
+        session.flash = "You are not listed as being signed up to this session."
     else:
-        removal_status = remove_from_session(session_id, user_id)
-        if removal_status == "Removed":
-            session.flash = "You have been removed from the session"
-        elif removal_status == "NotInList":
-            session.flash = "You are not listed as being signed up to this session."
-        else:
-            session.flash = "Error. You have not been removed from the session"
-        redirect(URL('my_sessions'))
+        session.flash = "Error. You have not been removed from the session"
+    redirect(URL('my_sessions'))
 
     return locals()
 
-
+@auth.requires_login()
 def quit_repeating_session():
     #GET VARS
     session_id = request.vars.s_id
@@ -392,7 +474,6 @@ def quit_repeating_session():
     display_fields = (db.sessions.title,db.sessions.start_datetime)
     field_headers = {'sessions.start_datetime':"Start Date and Time"}
     #get any other records with same UUID and display in grid
-
     grid = SQLFORM.grid((db.sessions.attendee_ids.contains(user_id))&(db.sessions.uuid==session_record.uuid),
                         selectable = lambda ids : redirect(URL('default', 'remove_from_repeating', vars=dict(s_id=ids))),
                         fields=display_fields,
@@ -403,8 +484,10 @@ def quit_repeating_session():
                         deletable=False,
                         csv=False,
                        details=False)
+
     return locals()
 
+@auth.requires_login()
 def remove_from_repeating():
     session_ids = request.vars.s_id
     user_id = auth.user_id
@@ -418,6 +501,7 @@ def remove_from_repeating():
         session.flash = "Sucessfully removed from selected session(s)"
     return locals()
 
+@auth.requires_login()
 def cancel_session():
     session_id = request.vars.s_id
     user_id = auth.user_id
@@ -440,6 +524,7 @@ def cancel_session():
 
     return locals()
 
+@auth.requires_login()
 def cancel_repeating_session():
     #GET VARS
     session_id = request.vars.s_id
@@ -465,6 +550,8 @@ def cancel_repeating_session():
                             details=False
                             )
         return locals()
+
+@auth.requires_login()
 def cancel_repeating():
     session_ids = request.vars.s_id
     user_id = auth.user_id
@@ -480,6 +567,7 @@ def cancel_repeating():
         session.flash = "Sucessfully cancelled selected session(s)"
     return locals()
 
+@auth.requires_login()
 def enable_session():
     session_id = request.vars.s_id
     user_id = auth.user_id
@@ -493,7 +581,7 @@ def enable_session():
         elif session_record.start_datetime < now:
             session.flash = "Session datetime is in the past. Please update this before enabling"
             redirect(URL('my_sessions'))
-        
+
         else:
             session_record.update_record(session_active=True)
             #TODO >>>>>>>>>> SEND EMAIL UPDATE TO SIGNED UP USERS
@@ -510,16 +598,16 @@ def my_sessions():
     user_id = auth.user_id
     default_sort=[db.sessions.start_datetime]
 #     display_fields = (db.sessions.hospital,db.sessions.session_type,db.sessions.session_lead,db.sessions.title,db.sessions.start_datetime)
-    display_fields_upcoming = (db.sessions.hospital,db.sessions.session_type,db.sessions.title,db.sessions.start_datetime,db.sessions.session_lead)
-    display_fields_previous = (db.sessions.hospital,db.sessions.session_type,db.sessions.title,db.sessions.start_datetime,db.sessions.session_lead)
-    display_fields_lead = (db.sessions.hospital,db.sessions.session_type,db.sessions.title,db.sessions.start_datetime,db.sessions.session_lead,db.sessions.session_active)
-    display_fields_authored = (db.sessions.hospital,db.sessions.session_type,db.sessions.title,db.sessions.start_datetime,db.sessions.session_lead,db.sessions.session_active)
+    display_fields_upcoming = (db.sessions.hospital,db.sessions.session_type,db.sessions.title,db.sessions.start_datetime,db.sessions.session_lead_name)
+    display_fields_previous = (db.sessions.hospital,db.sessions.session_type,db.sessions.title,db.sessions.start_datetime,db.sessions.session_lead_name)
+    display_fields_lead = (db.sessions.hospital,db.sessions.session_type,db.sessions.title,db.sessions.start_datetime,db.sessions.session_lead_name,db.sessions.session_active)
+    display_fields_authored = (db.sessions.hospital,db.sessions.session_type,db.sessions.title,db.sessions.start_datetime,db.sessions.session_lead_name,db.sessions.session_active)
     field_headers = {'sessions.start_datetime':"Start Date and Time"}
 
     #custom links in extra columns
     def session_status(row):
         if row.session_active == True:
-            return SPAN('Enabled',_class="label label-success") 
+            return SPAN('Enabled',_class="label label-success")
         elif row.session_active == False:
             return SPAN('Disabled',_class="label label-danger")
     def button_options(row):
@@ -527,7 +615,7 @@ def my_sessions():
             return A('Disable',_class="btn btn-danger",_href=URL('cancel_session',vars={"s_id":row.id}))
         elif row.session_active == False:
             return A('Enable',_class="btn btn-success",_href=URL('enable_session',vars={"s_id":row.id}))
-        
+
     links_current=[dict(header="Details",body=lambda row: A('View',_class="btn btn-default",_href=URL('view_session',vars={"s_id":row.id}))),
                    dict(header="Leave",body=lambda row: A('Leave Session',_class="btn btn-danger",_href=URL('quit_session',vars={"s_id":row.id})))]
     links_previous=[dict(header="Details",body=lambda row: A('View',_class="btn btn-default",_href=URL('view_session',vars={"s_id":row.id}))),
@@ -557,6 +645,7 @@ def my_sessions():
                                     deletable=False,
                                     csv=False,
                                     details=False,
+                                    sortable=False,
                                     maxtextlengths={'sessions.hospital' : 100,'sessions.title':100})
 
 
@@ -572,6 +661,7 @@ def my_sessions():
                                     deletable=False,
                                     csv=False,
                                     details=False,
+                                    sortable=False,
                                     maxtextlengths={'sessions.hospital' : 100,'sessions.title':100})
 
 
@@ -586,6 +676,7 @@ def my_sessions():
                                     deletable=False,
                                     csv=False,
                                     details=False,
+                                    sortable=False,
                                     maxtextlengths={'sessions.hospital' : 100,'sessions.title':100})
 
     #get sessions that user led
@@ -599,7 +690,8 @@ def my_sessions():
                                     deletable=False,
                                     csv=False,
                                     details=False,
-                                   maxtextlengths={'sessions.hospital' : 100,'sessions.title':100})
+                                    sortable=False,
+                                    maxtextlengths={'sessions.hospital' : 100,'sessions.title':100})
 
     if upcoming_sessions.element('table'): upcoming_sessions.element('table')['_id'] = 'data_table_upcoming' #giving an id to the grid container for datatables JS to know what to target
     if previous_sessions.element('table'): previous_sessions.element('table')['_id'] = 'data_table_previous' #giving an id to the grid container for datatables JS to know what to target
@@ -607,8 +699,9 @@ def my_sessions():
     if authored_sessions.element('table'): authored_sessions.element('table')['_id'] = 'data_table_authored' #giving an id to the grid container for datatables JS to know what to target
 
 
-    return dict(upcoming_sessions=upcoming_sessions,previous_sessions=previous_sessions,authored_sessions=authored_sessions,leader_sessions=leader_sessions)
+    return dict(user_id=user_id,upcoming_sessions=upcoming_sessions,previous_sessions=previous_sessions,authored_sessions=authored_sessions,leader_sessions=leader_sessions)
 
+@auth.requires_login()
 def feedback():
     user_id = auth.user_id
     session_id = request.vars.s_id
@@ -660,6 +753,62 @@ def feedback():
 
     return locals()
 
+@auth.requires(lambda: auth.has_membership('hospital') or auth.has_membership('undergrad') or auth.has_membership('administrator'))
+def admin_page():
+    if not request.vars.db_name:
+        requested_page = "access_keys"
+    else:
+        requested_page = request.vars.db_name
+
+
+    if requested_page=="hospitals":
+        query = db.hospitals
+        display_fields = (db.hospitals.hospital_name,db.hospitals.hospital_code,db.hospitals.block_name)
+        additional_links = None
+    elif requested_page=="sessions":
+        query = db.sessions
+        display_fields = (db.sessions.hospital,db.sessions.session_type,db.sessions.title,db.sessions.start_datetime,db.sessions.session_lead_name,db.sessions.session_full,db.sessions.current_attendees)
+        additional_links = [dict(header="Print Report",body=lambda row: A(SPAN(_class="glyphicon glyphicon-print")+' Print',_class="btn btn-default",_href=URL('print_user_report',vars={"u_id":row.id}))),
+                           dict(header="Duplicate",body=lambda row: A(SPAN(_class="glyphicon glyphicon-duplicate")+' Duplicate',_class="btn btn-default",_href=URL('new_repeating_session',vars={"s_id":row.id}))),
+
+                           ]
+    elif requested_page=="session_types":
+        query = db.session_types
+        display_fields = (db.session_types.id, db.session_types.session_type)
+        additional_links = None
+
+    elif requested_page=="access_keys":
+        query = db.access_keys
+        display_fields = (db.access_keys.unique_key,db.access_keys.key_active,db.access_keys.access_level)
+        additional_links = None
+
+    elif requested_page=="print_reports":
+        query = db.sessions
+        display_fields = (db.sessions.hospital,db.sessions.session_type,db.sessions.title,db.sessions.start_datetime,db.sessions.session_lead_name,db.sessions.session_full,db.sessions.current_attendees)
+        additional_links = [dict(header="Print Report",body=lambda row: A('Print Report',_class="btn btn-info",_href=URL('print_session_report',vars={"s_id":row.id})))]
+    elif requested_page=="users":
+        query = db.auth_user
+        display_fields = (db.auth_user.first_name,db.auth_user.last_name,db.auth_user.email,db.auth_user.default_hospital,db.auth_user.access_key)
+        additional_links = [dict(header="Print Report",body=lambda row: A('Print Report',_class="btn btn-info",_href=URL('print_user_report',vars={"u_id":row.id})))]
+    grid = SQLFORM.grid(query,
+                        searchable=True,
+                        create=True,
+                        editable=True,
+                        deletable=False,
+                        details=True,
+                        paginate=50,
+                        sortable=True,
+                        csv=False,
+                        user_signature=False,
+                        maxtextlength=30,
+                        fields=display_fields,
+                        links=additional_links
+#                         maxtextlengths={'sessions.hospital' : 100,'sessions.title':100}
+                       )
+    if grid.element('table'): grid.element('table')['_id'] = 'data_table'
+
+    return locals()
+
 def check_if_owner(session_id, user_id):
     session_record = db(db.sessions.id==session_id).select().first()
     if session_record.session_lead == user_id:
@@ -668,37 +817,9 @@ def check_if_owner(session_id, user_id):
         return True
     else:
         return False
-def send_email(user_id, subject, session_id, message):
-#     if not session.email_details:
-#         redirect(URL('my_sessions'))
-#         response.flash = "Something went wrong with email updates. Try again"
-#     else:
-#         user_id = session.email_details['user_id']
-#         subject = session.email_details['subject']
-#         session_id = session.email_details['session_id']
-#         message = session.email_details['message']
-        
-    #first check if user wants to recieve updates
-    user_record = db(db.auth_user.id==user_id).select().first()
-    session_record = db(db.sessions.id==session_id).select().first()
-    if user_record.email_notifications:
-        email_name = get_name_by_id(user_id)
-        email_address = user_record.email
-        email_subject = subject
-        email_message = message
 
-        x = mail.send(
-            to=[email_address],
-            subject=email_subject,
-            message= "Medboard.co.uk \n Hello this is an email from Medboard.co.uk. \n Please see the following message: \n" + str(message) + "\n This message is related to the following session: \n Session title: " + str(session_record.title) + "\n Session Date: \n" + str(session_record.start_datetime)
-        )
-#         redirect(URL('my_sessions'))
-        result = "Email updates sent"
-    else:
-#         redirect(URL('my_sessions'))
-        result = "Error sending email"
-        
-    return result
+
+
 
 def get_default_hospital(hosp_id):
     #function to get the users deafualt hosputal details from the hospitals table
@@ -707,7 +828,7 @@ def get_default_hospital(hosp_id):
     row = db.hospitals[hosp_id]
 #     the above line does the same as this line below but is far shorter
 #     row = db(db.hospitals.id==hosp_id).select().first()
-    users_hospital = {"hospital_name":row.hospital_name,"hospital_code":row.hospital_code}
+    users_hospital = {"hospital_name":row.hospital_name,"hospital_code":row.hospital_code,"block_name":row.block_name}
     return users_hospital
 
 def export_as_pdf():
@@ -749,7 +870,7 @@ def get_type_by_id(session_type_id):
 
 def get_hospital_by_id(hospital_id):
     hospital_record = db(db.hospitals.id==hospital_id).select().first()
-    hospital_name = str(hospital_record.hospital_name)
+    hospital_name = str(hospital_record.hospital_name + " - " + hospital_record.block_name)
     return hospital_name
 
 def failed_auth():
@@ -757,11 +878,11 @@ def failed_auth():
     return locals()
 
 def about():
-    
+
     return locals()
 
 def help():
-    
+
     return locals()
 
 def access_key():
@@ -795,6 +916,32 @@ def access_key():
         if form.process().accepted:
             redirect(URL('access_key',vars={'access_key':form.vars.access_key}))
     return locals()
+
+@auth.requires_login()
+def unsubscribe_email():
+    form = SQLFORM.factory(
+        Field('email','string',requires=IS_EMAIL()))
+    if form.process().accepted:
+        send_email = requests.post(
+                "https://api.sendgrid.com/api/mail.send.json",
+        #             auth=("api", "key-bb2f721881bfc7b739162a54a291f281"),
+                    data={
+                    "api_user":"bsharif",
+                    "api_key":"weRcon123",
+                    "to": 'SharifBS@cardiff.ac.uk',
+                    "toname":'Ben Sharif',
+                    "subject": 'Unsubscribe request',
+                    "html": form.vars.email,
+                    "from": "Medboard.co.uk <medboard.mail@gmail.com>",
+                    "cc":'medboard.mail@gmail.com',
+                    "replyto": form.vars.email
+                          }
+            )
+
+    return locals()
+
+
+
 def print_session_report():
     session_id = request.vars.s_id
     user_id = auth.user_id
@@ -811,7 +958,7 @@ def print_session_report():
     heading = "Session Details"
     story.append(Paragraph(escape(heading),styles["Heading2"]))
 
-    session_lead = "Session Lead: " + get_name_by_id(session_record.session_lead)
+    session_lead = "Session Lead: " + session_record.session_lead_name
     story.append(Paragraph(escape(session_lead),styles["Heading4"]))
 
     session_type = "Session Type: " + get_type_by_id(session_record.session_type)
@@ -897,6 +1044,58 @@ def print_session_report():
             if (record.improvements) and (record.improvements != ""):
                 story.append(Paragraph(escape("-- " + record.improvements),styles["Normal"]))
 
+
+    story.append(Spacer(1,2*inch))
+    doc.build(story)
+    data = open(tmpfilename,"rb").read()
+    os.unlink(tmpfilename)
+    response.headers['Content-Type']='application/pdf'
+    return data
+
+def print_user_report():
+    user_id = request.vars.u_id
+    user_record = db(db.auth_user.id==user_id).select().first()
+    sessions_attended = db(db.sessions.attendee_ids.contains(user_id)).select()
+
+    styles = getSampleStyleSheet()
+    tmpfilename=os.path.join(request.folder,'private',str(uuid4()))
+    doc = SimpleDocTemplate(tmpfilename)
+    story = []
+
+    title = "Medboard: User Report - " + user_record.first_name + " " + user_record.last_name
+    story.append(Paragraph(escape(title),styles["Title"]))
+
+    heading = "User Details"
+    story.append(Paragraph(escape(heading),styles["Heading2"]))
+
+    user_name = "User Name: " + get_name_by_id(user_id)
+    story.append(Paragraph(escape(user_name),styles["Heading4"]))
+
+    user_email = "Email: " + user_record.email
+    story.append(Paragraph(escape(user_email),styles["Heading4"]))
+
+    default_hospital = "Default Hospital: " + get_hospital_by_id(user_record.default_hospital)
+    story.append(Paragraph(escape(default_hospital),styles["Heading4"]))
+
+    date_of_report = "Date of report: " + str(datetime.datetime.today().strftime('%d %b %Y'))
+    story.append(Paragraph(escape(date_of_report),styles["Heading4"]))
+
+
+    sessions_attended_count = "Sessions Attended: "  + str(len(sessions_attended))
+    story.append(Paragraph(escape(sessions_attended_count),styles["Heading2"]))
+
+
+    story.append(Paragraph(escape("Session Breakdown"),styles["Heading2"]))
+    session_types = db(db.session_types).select()
+    for session_type in session_types:
+        type_name = get_type_by_id(session_type)
+        story.append(Paragraph(escape(type_name),styles["Heading3"]))
+
+        for session in sessions_attended:
+            if session.session_type == session_type:
+                session_detail = session.title + " / " + session.session_location + " / " + str(session.start_datetime.strftime('%d-%m-%Y %H:%M')) + " / " + str(session.duration) + "mins / " + get_name_by_id(session.session_lead_name)
+                story.append(Paragraph(escape(session_detail),styles["Normal"]))
+        story.append(Spacer(1,0.1*inch))
 
     story.append(Spacer(1,2*inch))
     doc.build(story)

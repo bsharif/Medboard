@@ -4,11 +4,12 @@
     <div class="row">
         <h1>Session Details</h1>
     {{if request.env.http_referer:}}
-        {{=A('Back',_href=request.env.http_referer,_class="btn btn-primary")}}
+        {{=A('Back',_href=request.env.http_referer,_class="btn btn-default")}}
     {{else:}}
-    {{=A('Back',_href="javascript:void(history.go(-1))",_class="btn btn-primary")}}
-    {{pass}}{{=A('Browse',_href=URL('browse'),_class="btn btn-primary")}}
-    {{=A('My Sessions',_href=URL('my_sessions'),_class="btn btn-primary")}}
+    {{=A('Back',_href="javascript:void(history.go(-1))",_class="btn btn-default")}}
+    {{pass}}{{=A('Browse',_href=URL('browse'),_class="btn btn-default")}}
+    {{=A('My Sessions',_href=URL('my_sessions'),_class="btn btn-default")}}
+    {{=A('Sign Up',_href=URL('sign_up',vars={'s_id':session_id}),_class="btn btn-primary")}}
     </div>
     {{if advanced_options:}}
     <div class="row">

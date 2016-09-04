@@ -17,6 +17,18 @@
                     </p>
                 </div>
             </div>
+        {{elif request.args(0)=='login':}}
+            <div class="row">
+                <div class="well col-md-8 col-md-offset-1">
+
+                    <p>
+                         NOTE <br>
+                       This is a publicly hosted website and has no connection to NHS servers. 
+                        Content is freely accesible. {{=A('Contact us',_href=URL('about'))}} if you have an questions.
+                    </p>
+                </div>
+            </div>
+            
         {{pass}}
         {{
         if request.args(0)=='login':

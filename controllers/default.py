@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-
+ 
 ##IMPORTS#####################
 #********REPORTLAB************
 from reportlab.platypus import *
@@ -14,16 +14,19 @@ import os
 #*************
 import datetime
 import requests
-##############################
+############################## 
 
 def index():
 
     return locals()
 
 def test():
-    
+
     return locals()
 
+def get_started():
+
+    return locals()
 
 @auth.requires(lambda: auth.has_membership('session_lead') or auth.has_membership('undergrad'))
 def new_session():
@@ -55,16 +58,31 @@ def new_repeating_session():
     restrict_lead_query = ((db.auth_user.id == db.auth_membership.user_id)&
            ((db.auth_membership.group_id == 2)|(db.auth_membership.group_id == 3)))
 
+    #if a duplicate s_id is passed then get that records details
+    duplicate_request = False
+    dup_fields = ['hospital','session_type','session_lead_name','session_lead_email','title','description','session_location','duration','max_attendees']
+    dup_dict = dict.fromkeys(dup_fields,"")
+    if request.vars.s_id:
+        duplicate_request=True
+        dup_record = db(db.sessions.id==request.vars.s_id).select().first()
+        for i in dup_fields:
+            field_name = i
+            field_value = dup_record[field_name]
+            if not field_value: field_value = ""
+            dup_dict[field_name]=field_value
+
+
     basic_form = SQLFORM.factory(
-                Field('hospital','reference hospitals',requires=IS_IN_DB(db,'hospitals.id','%(hospital_name)s - %(block_name)s'),default=auth.user.default_hospital), #need to add a default option depending on users default hospital
-                Field('session_type','reference session_types',requires=IS_IN_DB(db,'session_types.id','%(session_type)s'),default='1'),    #added requires in set from SESSION_TYPES table - currently 4 types available
+                Field('hospital','reference hospitals',requires=IS_IN_DB(db,'hospitals.id','%(hospital_name)s - %(block_name)s'),default=dup_dict['hospital']), #need to add a default option depending on users default hospital
+                Field('session_type','reference session_types',requires=IS_IN_DB(db,'session_types.id','%(session_type)s'),default=dup_dict['session_type']),    #added requires in set from SESSION_TYPES table - currently 4 types available
                 Field('session_lead','reference auth_user', default=auth.user_id, requires=IS_IN_DB(db(restrict_lead_query), db.auth_user.id, '%(first_name)s %(last_name)s (%(email)s)'),readable=False,writable=False),
-                Field('session_lead_name','string',requires=IS_NOT_EMPTY()),
-                Field('title','string',requires=IS_NOT_EMPTY()),
-                Field('description','text'),
-                Field('session_location','string',requires=IS_NOT_EMPTY()),
-                Field('duration','integer',requires=IS_NOT_EMPTY()),
-                Field('max_attendees','integer',requires=IS_NOT_EMPTY()),
+                Field('session_lead_name','string',requires=IS_NOT_EMPTY(),default=dup_dict['session_lead_name']),
+                Field('session_lead_email','string',requires=IS_EMAIL(),default=dup_dict['session_lead_email']),
+                Field('title','string',requires=IS_NOT_EMPTY(),default=dup_dict['title']),
+                Field('description','text',default=dup_dict['description']),
+                Field('session_location','string',requires=IS_NOT_EMPTY(),default=dup_dict['session_location']),
+                Field('duration','integer',requires=IS_NOT_EMPTY(),default=dup_dict['duration']),
+                Field('max_attendees','integer',requires=IS_NOT_EMPTY(),default=dup_dict['max_attendees']),
                 Field('number_of_sessions','integer',requires=IS_NOT_EMPTY()),
                 labels = {'duration':'Duration (minutes)'},
                 submit_button='Next')
@@ -76,6 +94,7 @@ def new_repeating_session():
         session.repeating_basic['session_type'] = basic_form.vars.session_type
         session.repeating_basic['session_lead'] = basic_form.vars.session_lead
         session.repeating_basic['session_lead_name'] = basic_form.vars.session_lead_name
+        session.repeating_basic['session_lead_email'] = basic_form.vars.session_lead_email
         session.repeating_basic['title'] = basic_form.vars.title
         session.repeating_basic['description'] = basic_form.vars.description
         session.repeating_basic['session_location'] = basic_form.vars.session_location
@@ -89,6 +108,84 @@ def new_repeating_session():
 
 
     return locals()
+
+
+@auth.requires_membership('session_lead')
+def edit_repeating_session():
+    #limited to members of undergrad or session_leads
+    #this creates a basic outline then lets users enter basic session details and number of session required
+    #stores all values in a session.dictionary and redirect to a new page with a dynamically genrated SQL form
+    #the new page allows entry of dates
+    user_id = auth.user_id
+    #start from beginning
+    restrict_lead_query = ((db.auth_user.id == db.auth_membership.user_id)&
+           ((db.auth_membership.group_id == 2)|(db.auth_membership.group_id == 3)))
+
+    #if a duplicate s_id is passed then get that records details
+    duplicate_request = False
+    dup_fields = ['uuid','hospital','session_type','session_lead_name','session_lead_email','title','description','session_location','duration','max_attendees']
+    dup_dict = dict.fromkeys(dup_fields,"")
+    if request.vars.s_id:
+        duplicate_request=True
+        dup_record = db(db.sessions.id==request.vars.s_id).select().first()
+        for i in dup_fields:
+            field_name = i
+            field_value = dup_record[field_name]
+            if not field_value: field_value = ""
+            dup_dict[field_name]=field_value
+        uuid = dup_dict['uuid']
+    else:
+        redirect(URL('admin_page'))
+    matching_records = db(db.sessions.uuid==uuid).count()
+    basic_form = SQLFORM.factory(
+                Field('hospital','reference hospitals',requires=IS_IN_DB(db,'hospitals.id','%(hospital_name)s - %(block_name)s'),default=dup_dict['hospital']), #need to add a default option depending on users default hospital
+                Field('session_type','reference session_types',requires=IS_IN_DB(db,'session_types.id','%(session_type)s'),default=dup_dict['session_type']),    #added requires in set from SESSION_TYPES table - currently 4 types available
+                Field('session_lead','reference auth_user', default=auth.user_id, requires=IS_IN_DB(db(restrict_lead_query), db.auth_user.id, '%(first_name)s %(last_name)s (%(email)s)'),readable=False,writable=False),
+                Field('session_lead_name','string',requires=IS_NOT_EMPTY(),default=dup_dict['session_lead_name']),
+                Field('session_lead_email','string',requires=IS_EMAIL(),default=dup_dict['session_lead_email']),
+                Field('title','string',requires=IS_NOT_EMPTY(),default=dup_dict['title']),
+                Field('description','text',default=dup_dict['description']),
+                Field('session_location','string',requires=IS_NOT_EMPTY(),default=dup_dict['session_location']),
+                Field('duration','integer',requires=IS_NOT_EMPTY(),default=dup_dict['duration']),
+                Field('max_attendees','integer',requires=IS_NOT_EMPTY(),default=dup_dict['max_attendees']),
+                labels = {'duration':'Duration (minutes)'},
+                submit_button='Update all ' + str(matching_records) + ' matching sessions')
+
+    if basic_form.process().accepted:
+        session.repeating_basic = {}
+        session.repeating_basic['hospital'] = basic_form.vars.hospital
+        session.repeating_basic['session_type'] = basic_form.vars.session_type
+        session.repeating_basic['session_lead'] = basic_form.vars.session_lead
+        session.repeating_basic['session_lead_name'] = basic_form.vars.session_lead_name
+        session.repeating_basic['session_lead_email'] = basic_form.vars.session_lead_email
+        session.repeating_basic['title'] = basic_form.vars.title
+        session.repeating_basic['description'] = basic_form.vars.description
+        session.repeating_basic['session_location'] = basic_form.vars.session_location
+        session.repeating_basic['duration'] = basic_form.vars.duration
+        session.repeating_basic['max_attendees'] = basic_form.vars.max_attendees
+        session.repeating_basic['number_of_sessions'] = basic_form.vars.number_of_sessions
+        
+
+        matching_records = db(db.sessions.uuid==uuid).select()
+        for record in matching_records:
+            record.update_record(
+                        hospital=session.repeating_basic['hospital'],
+                        session_type=session.repeating_basic['session_type'],
+                        session_lead=session.repeating_basic['session_lead'],
+                        session_lead_name=session.repeating_basic['session_lead_name'],
+                        session_lead_email=session.repeating_basic['session_lead_email'],
+                        title=session.repeating_basic['title'],
+                        description=session.repeating_basic['description'],
+                        session_location=session.repeating_basic['session_location'],
+                        duration=session.repeating_basic['duration'],
+                        max_attendees=session.repeating_basic['max_attendees'])
+
+
+        redirect(URL('admin_page'))
+
+    return locals()
+
+
 @auth.requires_login()
 def new_repeating_session_dates():
     import uuid
@@ -124,7 +221,7 @@ def new_repeating_session_dates():
                         session_type=session.repeating_basic['session_type'],
                         session_lead=session.repeating_basic['session_lead'],
                         session_lead_name=session.repeating_basic['session_lead_name'],
-#                         AUTH.SIG UPDATE> author=user_id,
+                        session_lead_email=session.repeating_basic['session_lead_email'],
                         title=session.repeating_basic['title'],
                         description=session.repeating_basic['description'],
                         session_location=session.repeating_basic['session_location'],
@@ -194,7 +291,8 @@ def edit_session():
     if form.process().accepted:
             for user_id in session_record.attendee_ids:
                 #TODO test email function on 'modified_by'
-                email_updates = send_email(user_id, "Medboard: Session Updated", session_id, "Session Details Updated")
+                #email_updates = send_email(user_id, "Medboard: Session Updated", session_id, "Session Details Updated")
+                pass
             session.flash = "Session Updated"
             redirect(URL('my_sessions'))
     return locals()
@@ -204,7 +302,7 @@ def browse():
     #lists ongoing sessions - default is ALL unless logged in in which case default is auth_user.default_hospital
     #view should filter and sort etc.
     if auth.user:
-        
+
         default_hospital = get_default_hospital(auth.user.default_hospital)
         display_name = default_hospital['hospital_name']
 
@@ -214,7 +312,7 @@ def browse():
     for row in hospital_rows:
         hospitals_list.append(row.hospital_code + " - " + row.block_name)
         hospitals_dict[row.id] = row.hospital_code + " - " + row.block_name
-    
+
     selected_hospital = request.args(0)
     if (not selected_hospital) and (auth.user):
         selected_hospital = auth.user.default_hospital
@@ -254,7 +352,7 @@ def browse():
 
     def sign_up_button(row):
         attendee_ids = row.attendee_ids
-        
+
         if auth.user:
             user_id = auth.user_id
             if user_id in attendee_ids:
@@ -285,6 +383,51 @@ def browse():
     if grid.element('table'): grid.element('table')['_id'] = 'data_table' #giving an id to the grid container for datatables JS to know what to target
 
     return locals()
+
+
+def send_email(session_id):
+    # session_id = 37
+    user_record = db(db.auth_user.id==auth.user_id).select().first()
+    session_record = db(db.sessions.id==session_id).select().first()
+
+    session_lead_name = session_record.session_lead_name
+    session_lead_email_address = session_record.session_lead_email
+    trainee_name = user_record.first_name + " " + user_record.last_name
+    trainee_email = user_record.email
+    email_subject = "Medboard - Signup Notification"
+    email_html ="<html><h1>Medboard.co.uk</h1> <p>Dear " + session_lead_name +",</p><p>This is an notification email from Medboard.</p><hr> \
+                    <p>A student has signed up to attend one of your sessions. Details below:</p>  \
+                    <p>Session Title: " + str(session_record.title) + \
+                    "</p> <p>Session Date and Time: " + str(session_record.start_datetime.strftime('%d-%m-%Y %H:%M')) + \
+                    "</p> <p>Session Location: " + str(session_record.session_location) + \
+                    "</p> <p>Student Name: " + str(trainee_name) + \
+                    "</p> <p>Student Email: " + str(trainee_email) + \
+                    "</p> <p><a href='https://nhshd15.pythonanywhere.com/medboard/default/view_session?s_id="+\
+                    str(session_id)+"'>Click here</a> to view this session's details online</p>" \
+                    "<p>NOTE: If for any reason this clinic is cancelled or you need to contact the student then you can reply to this message to contact the student directly.</p> \
+                    <p>Thanks,</p> <p>Medboard </p></html>"
+
+    sent_email = 999
+    send_email = requests.post(
+        "https://api.sendgrid.com/api/mail.send.json",
+#             auth=("api", "key-bb2f721881bfc7b739162a54a291f281"),
+            data={
+            "api_user":"bsharif",
+            "api_key":"weRcon123",
+            "to": session_lead_email_address,
+            "toname":session_lead_name,
+            "subject": email_subject,
+            "html": email_html,
+            "from": "Medboard.co.uk <medboard.mail@gmail.com>",
+            "cc":'medboard.mail@gmail.com',
+            "replyto": trainee_email
+                  }
+    )
+
+    if send_email.status_code == 200:
+        sent_email = send_email.status_code
+
+    return sent_email
 
 @auth.requires_login()
 def sign_up():
@@ -326,9 +469,16 @@ def sign_up():
         if number_of_attendees == session_record.max_attendees:
             session_record.update_record(session_full=True)
 
-        session.flash = "Thanks for signing up"
+        #send a signup email to session owner
+        email_result = send_email(session_id)
+        if email_result:
+            session.flash = "Signed up. Session lead notified"
+        else:
+            session.flash = "Signed up."
+        #session.flash = "Thanks for signing up!"
         redirect(URL('my_sessions'))
     return locals()
+
 
 @auth.requires_login()
 def remove_from_session(session_id, user_id):
@@ -366,7 +516,7 @@ def quit_session():
     if not session_id:
         session.flash = "No session ID provided"
         redirect(request.env.http_referer)
-    
+
     #disabled leave repeaeting session
 #     if session_record.repeating:
 #         redirect(URL('quit_repeating_session',vars={"s_id":session_id}))
@@ -406,7 +556,7 @@ def quit_repeating_session():
                         deletable=False,
                         csv=False,
                        details=False)
-    
+
     return locals()
 
 @auth.requires_login()
@@ -472,7 +622,7 @@ def cancel_repeating_session():
                             details=False
                             )
         return locals()
-    
+
 @auth.requires_login()
 def cancel_repeating():
     session_ids = request.vars.s_id
@@ -598,7 +748,7 @@ def my_sessions():
                                     deletable=False,
                                     csv=False,
                                     details=False,
-                                    sortable=False,                                     
+                                    sortable=False,
                                     maxtextlengths={'sessions.hospital' : 100,'sessions.title':100})
 
     #get sessions that user led
@@ -612,7 +762,7 @@ def my_sessions():
                                     deletable=False,
                                     csv=False,
                                     details=False,
-                                    sortable=False,                                   
+                                    sortable=False,
                                     maxtextlengths={'sessions.hospital' : 100,'sessions.title':100})
 
     if upcoming_sessions.element('table'): upcoming_sessions.element('table')['_id'] = 'data_table_upcoming' #giving an id to the grid container for datatables JS to know what to target
@@ -678,7 +828,7 @@ def feedback():
 @auth.requires(lambda: auth.has_membership('hospital') or auth.has_membership('undergrad') or auth.has_membership('administrator'))
 def admin_page():
     if not request.vars.db_name:
-        requested_page = "access_keys"        
+        requested_page = "access_keys"
     else:
         requested_page = request.vars.db_name
 
@@ -690,7 +840,11 @@ def admin_page():
     elif requested_page=="sessions":
         query = db.sessions
         display_fields = (db.sessions.hospital,db.sessions.session_type,db.sessions.title,db.sessions.start_datetime,db.sessions.session_lead_name,db.sessions.session_full,db.sessions.current_attendees)
-        additional_links = None
+        additional_links = [dict(header="Print Report",body=lambda row: A(SPAN(_class="glyphicon glyphicon-print")+' Print',_class="btn btn-default",_href=URL('print_user_report',vars={"u_id":row.id}))),
+                           dict(header="Duplicate",body=lambda row: A(SPAN(_class="glyphicon glyphicon-duplicate")+' Duplicate',_class="btn btn-default",_href=URL('new_repeating_session',vars={"s_id":row.id}))),
+                            dict(header="Edit Repeating",body=lambda row: A(SPAN(_class="glyphicon glyphicon-edit")+' Edit Repeat',_class="btn btn-default",_href=URL('edit_repeating_session',vars={"s_id":row.id}))),
+
+                           ]
     elif requested_page=="session_types":
         query = db.session_types
         display_fields = (db.session_types.id, db.session_types.session_type)
@@ -710,12 +864,12 @@ def admin_page():
         display_fields = (db.auth_user.first_name,db.auth_user.last_name,db.auth_user.email,db.auth_user.default_hospital,db.auth_user.access_key)
         additional_links = [dict(header="Print Report",body=lambda row: A('Print Report',_class="btn btn-info",_href=URL('print_user_report',vars={"u_id":row.id})))]
     grid = SQLFORM.grid(query,
-                        searchable=False,
+                        searchable=True,
                         create=True,
                         editable=True,
                         deletable=False,
                         details=True,
-                        paginate=999,
+                        paginate=50,
                         sortable=True,
                         csv=False,
                         user_signature=False,
@@ -736,35 +890,8 @@ def check_if_owner(session_id, user_id):
         return True
     else:
         return False
-    
-    
-def send_email(user_id, subject, session_id, message):
 
-    #first check if user wants to recieve updates
-    user_record = db(db.auth_user.id==user_id).select().first()
-    session_record = db(db.sessions.id==session_id).select().first()
-    result = 999
-    if user_record.email_notifications:
-        email_name = get_name_by_id(user_id)
-        email_address = user_record.email
-        email_subject = subject
-        email_message = message
-        message_text= "Medboard.co.uk \n Hello this is an email from Medboard.co.uk. \n Please see the the message below: \n" + str(message) + "\n This message is related to the following session: \n Session title: " + str(session_record.title) + "\n Session Date: \n" + str(session_record.start_datetime.strftime('%d-%m-%Y %H:%M')) 
-        message_html = "<h1>Medboard.co.uk</h1> <p>Hello. This is an email from Medboard.co.uk. Please see the message below: </p> <hr> <h3>" + email_message + "</h3> <hr> <p>This message is related to the following session:</p> <p>Session Title: " + str(session_record.title) + "</p> <p>Session Date and Time: " + str(session_record.start_datetime.strftime('%d-%m-%Y %H:%M')) + "</p> <p><a href='http://nhshd15.pythonanywhere.com/medboard/default/view_session?s_id="+str(session_id)+"'>Click here</a> to view this session's details</p> <p><a href='http://nhshd15.pythonanywhere.com/medboard/default/my_sessions'>Click here</a> to view all your sessions. </p> "
 
-        send_email = requests.post(
-            "https://api.mailgun.net/v3/medboard.co.uk/messages",
-            auth=("api", "key-bb2f721881bfc7b739162a54a291f281"),
-            data={"from": "Medboard.co.uk <medboard.mail@gmail.com>",
-                  "to": email_name + "<" + email_address + ">",
-                  "subject": "Session Updated",
-                  "text": message_text,
-                  "html": message_html})
-    
-        if send_email.status_code == 200:
-            result = send_email.status_code
-        
-    return result
 
 
 def get_default_hospital(hosp_id):
@@ -865,17 +992,29 @@ def access_key():
 
 @auth.requires_login()
 def unsubscribe_email():
-    user_id = auth.user_id
-    user_record = db(db.auth_user.id==user_id).select().first()
-    
-    user_record.update_record(email_notifications=False)
-    session.flash="Ubsubscribed from emails"
-    redirect(URL("user",args=['profile']))
-    
+    form = SQLFORM.factory(
+        Field('email','string',requires=IS_EMAIL()))
+    if form.process().accepted:
+        send_email = requests.post(
+                "https://api.sendgrid.com/api/mail.send.json",
+        #             auth=("api", "key-bb2f721881bfc7b739162a54a291f281"),
+                    data={
+                    "api_user":"bsharif",
+                    "api_key":"weRcon123",
+                    "to": 'SharifBS@cardiff.ac.uk',
+                    "toname":'Ben Sharif',
+                    "subject": 'Unsubscribe request',
+                    "html": form.vars.email,
+                    "from": "Medboard.co.uk <medboard.mail@gmail.com>",
+                    "cc":'medboard.mail@gmail.com',
+                    "replyto": form.vars.email
+                          }
+            )
+
     return locals()
 
-    
-    
+
+
 def print_session_report():
     session_id = request.vars.s_id
     user_id = auth.user_id
@@ -892,7 +1031,7 @@ def print_session_report():
     heading = "Session Details"
     story.append(Paragraph(escape(heading),styles["Heading2"]))
 
-    session_lead = "Session Lead: " + session_record.session_lead_name
+    session_lead = "Session Lead: " + str(session_record.session_lead_name)
     story.append(Paragraph(escape(session_lead),styles["Heading4"]))
 
     session_type = "Session Type: " + get_type_by_id(session_record.session_type)
@@ -990,7 +1129,7 @@ def print_user_report():
     user_id = request.vars.u_id
     user_record = db(db.auth_user.id==user_id).select().first()
     sessions_attended = db(db.sessions.attendee_ids.contains(user_id)).select()
-    
+
     styles = getSampleStyleSheet()
     tmpfilename=os.path.join(request.folder,'private',str(uuid4()))
     doc = SimpleDocTemplate(tmpfilename)
@@ -1027,7 +1166,7 @@ def print_user_report():
 
         for session in sessions_attended:
             if session.session_type == session_type:
-                session_detail = session.title + " / " + session.session_location + " / " + str(session.start_datetime.strftime('%d-%m-%Y %H:%M')) + " / " + str(session.duration) + "mins / " + get_name_by_id(session.session_lead_name)
+                session_detail = session.title + " / " + session.session_location + " / " + str(session.start_datetime.strftime('%d-%m-%Y %H:%M')) + " / " + str(session.duration) + "mins / " + str(session.session_lead_name)
                 story.append(Paragraph(escape(session_detail),styles["Normal"]))
         story.append(Spacer(1,0.1*inch))
 
